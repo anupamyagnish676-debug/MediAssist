@@ -34,9 +34,10 @@ public class DataInitializer {
                                           org.springframework.security.crypto.password.PasswordEncoder passwordEncoder,
                                           AppointmentSlipPdfService pdfService) {
         return args -> {
-            if (hospitalRepo.count() > 0) return;
+            try {
+                if (hospitalRepo.count() > 0) return;
 
-            logger.info("Seeding demo hospitals, doctors, and appointments...");
+                logger.info("Seeding demo hospitals, doctors, and appointments...");
 
             // 1. Hospital 1
             Hospital h1 = new Hospital(
@@ -138,6 +139,9 @@ public class DataInitializer {
             userRepo.save(manager2);
 
             logger.info("Demo database & accounts seeded successfully! Admin: admin@mediassist.com / Admin@123");
+            } catch (Exception ex) {
+                logger.warn("DataInitializer note: Database initialization or check skipped: {}", ex.getMessage());
+            }
         };
     }
 }

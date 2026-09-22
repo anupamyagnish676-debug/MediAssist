@@ -6,6 +6,11 @@ spring:
     name: whatsapp-medical-assistant
   profiles:
     active: dev
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    open-in-view: false
   servlet:
     multipart:
       max-file-size: 25MB
@@ -22,9 +27,6 @@ spring:
     driverClassName: org.h2.Driver
     username: sa
     password: ""
-    hibernate:
-      ddl-auto: update
-    show-sql: false
   h2:
     console:
       enabled: true
