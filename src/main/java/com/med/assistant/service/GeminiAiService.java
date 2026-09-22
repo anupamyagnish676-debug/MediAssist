@@ -67,34 +67,36 @@ public class GeminiAiService {
             return generateMockTriageResponse(userQuery);
         }
 
-        try {
-            String systemInstruction = """
-                You are a compassionate, clinical AI Medical Assistant inside WhatsApp.
-                GUIDELINES:
-                1. Always include a short disclaimer: 'I am an AI assistant, not a doctor.'
-                2. If the user speaks or writes in Hindi, Spanish, or any other vernacular, ALWAYS reply in that same language.
-                3. Never prescribe exact prescription-only dosages.
-                4. Give helpful preliminary home-care tips and advise which medical specialist to consult.
-                5. Keep WhatsApp replies clear, concise, and formatted with bullet points and friendly emojis.
-                """;
+        String[] candidateModels = { modelName, "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-2.5-flash", "gemini-pro" };
+        String systemInstruction = """
+            You are a compassionate, clinical AI Medical Assistant inside WhatsApp.
+            GUIDELINES:
+            1. Always include a short disclaimer: 'I am an AI assistant, not a doctor.'
+            2. If the user speaks or writes in Hindi, Spanish, or any other vernacular, ALWAYS reply in that same language.
+            3. Never prescribe exact prescription-only dosages.
+            4. Give helpful preliminary home-care tips and advise which medical specialist to consult.
+            5. Keep WhatsApp replies clear, concise, and formatted with bullet points and friendly emojis.
+            """;
 
-            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":generateContent?key=" + geminiApiKey;
+        Map<String, Object> textPart = Map.of("text", systemInstruction + "\n\nUser: " + userQuery);
+        Map<String, Object> content = Map.of("parts", List.of(textPart));
+        Map<String, Object> requestBody = Map.of("contents", List.of(content));
 
-            Map<String, Object> textPart = Map.of("text", systemInstruction + "\n\nUser: " + userQuery);
-            Map<String, Object> content = Map.of("parts", List.of(textPart));
-            Map<String, Object> requestBody = Map.of("contents", List.of(content));
+        for (String candidate : candidateModels) {
+            try {
+                String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey;
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-
-            ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-            return extractTextFromGeminiResponse(response.getBody());
-
-        } catch (Exception e) {
-            logger.error("Error calling Gemini API: {}", e.getMessage());
-            return generateMockTriageResponse(userQuery);
+                ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                this.modelName = candidate; // Cache working model
+                return extractTextFromGeminiResponse(response.getBody());
+            } catch (Exception e) {
+                logger.warn("Model {} failed ({}), trying next candidate...", candidate, e.getMessage());
+            }
         }
+        return generateMockTriageResponse(userQuery);
     }
 
     /**
