@@ -30,11 +30,13 @@ public class HospitalApiController {
     }
 
     @GetMapping
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<?> getAllHospitals() {
         try {
-            List<Hospital> hospitals = hospitalRepository.findByActiveTrue();
+            List<Hospital> hospitals = hospitalRepository.findAll();
             List<Map<String, Object>> response = new java.util.ArrayList<>();
             for (Hospital h : hospitals) {
+                if (!h.isActive()) continue;
                 Map<String, Object> map = new HashMap<>();
                 map.put("id", h.getId());
                 map.put("name", h.getName());
@@ -42,34 +44,33 @@ public class HospitalApiController {
                 map.put("latitude", h.getLatitude());
                 map.put("longitude", h.getLongitude());
                 map.put("phone", h.getPhone());
-                map.put("brandColor", h.getBrandColor());
+                map.put("brandColor", h.getBrandColor() != null ? h.getBrandColor() : "#0284c7");
                 map.put("active", h.isActive());
                 map.put("status", h.getStatus() != null ? h.getStatus().name() : "ACTIVE");
 
+                List<Doctor> docList = doctorRepository.findByHospitalId(h.getId());
                 List<Map<String, Object>> docs = new java.util.ArrayList<>();
-                if (h.getDoctors() != null) {
-                    for (Doctor d : h.getDoctors()) {
-                        Map<String, Object> docMap = new HashMap<>();
-                        docMap.put("id", d.getId());
-                        docMap.put("name", d.getName());
-                        docMap.put("department", d.getDepartment());
-                        docMap.put("dailyTokenLimit", d.getDailyTokenLimit());
-                        docMap.put("currentTokenCount", d.getCurrentTokenCount());
-                        docMap.put("availableToday", d.isAvailableToday());
-                        docMap.put("roomNumber", d.getRoomNumber() != null ? d.getRoomNumber() : "101");
-                        docMap.put("consultationFee", d.getConsultationFee());
-                        docs.add(docMap);
-                    }
+                for (Doctor d : docList) {
+                    Map<String, Object> docMap = new HashMap<>();
+                    docMap.put("id", d.getId());
+                    docMap.put("name", d.getName());
+                    docMap.put("department", d.getDepartment());
+                    docMap.put("dailyTokenLimit", d.getDailyTokenLimit());
+                    docMap.put("currentTokenCount", d.getCurrentTokenCount());
+                    docMap.put("availableToday", d.isAvailableToday());
+                    docMap.put("roomNumber", d.getRoomNumber() != null ? d.getRoomNumber() : "101");
+                    docMap.put("consultationFee", d.getConsultationFee());
+                    docs.add(docMap);
                 }
                 map.put("doctors", docs);
                 response.add(map);
             }
             return ResponseEntity.ok(response);
         } catch (Throwable t) {
-            return ResponseEntity.status(500).body(Map.of(
-                    "status", "ERROR",
-                    "message", t.getMessage() != null ? t.getMessage() : "Unknown DB query error"
-            ));
+            Map<String, Object> err = new HashMap<>();
+            err.put("status", "ERROR");
+            err.put("message", t.getMessage() != null ? t.getMessage() : "Error loading hospitals");
+            return ResponseEntity.status(500).body(err);
         }
     }
 
