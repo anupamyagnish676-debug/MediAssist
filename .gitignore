@@ -1,0 +1,25 @@
+# Maven build artifacts
+target/
+*.jar
+*.war
+*.ear
+
+# Environment & Credentials
+.env
+*.key
+*.pem
+
+# Local Uploads & Slips
+uploads/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS files
+.DS_Store
+Thumbs.db

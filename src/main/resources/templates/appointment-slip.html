@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Hospital Appointment Slip</title>
+    <style>
+        @page {
+            size: A5 portrait;
+            margin: 15mm;
+        }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #1e293b;
+            font-size: 11pt;
+            line-height: 1.4;
+            margin: 0;
+            padding: 0;
+        }
+        .header-table {
+            width: 100%;
+            border-bottom: 2px solid #0284c7;
+            padding-bottom: 12px;
+            margin-bottom: 15px;
+        }
+        .hospital-name {
+            font-size: 16pt;
+            font-weight: bold;
+            color: #0284c7;
+            margin: 0;
+        }
+        .hospital-info {
+            font-size: 9pt;
+            color: #64748b;
+            margin-top: 3px;
+        }
+        .badge-table {
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .token-box {
+            background-color: #f0f9ff;
+            border: 2px dashed #0284c7;
+            border-radius: 8px;
+            text-align: center;
+            padding: 12px;
+        }
+        .token-label {
+            font-size: 10pt;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #0369a1;
+            font-weight: bold;
+        }
+        .token-number {
+            font-size: 36pt;
+            font-weight: 900;
+            color: #0284c7;
+            margin: 5px 0;
+        }
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        .info-table td {
+            padding: 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .label {
+            font-weight: bold;
+            color: #475569;
+            width: 35%;
+        }
+        .value {
+            color: #0f172a;
+        }
+        .qr-section {
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f8fafc;
+            border-radius: 6px;
+        }
+        .qr-image {
+            width: 130px;
+            height: 130px;
+        }
+        .qr-caption {
+            font-size: 8pt;
+            color: #64748b;
+            margin-top: 6px;
+        }
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 8pt;
+            color: #94a3b8;
+            border-top: 1px solid #f1f5f9;
+            padding-top: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Hospital Header -->
+    <table class="header-table">
+        <tr>
+            <td style="vertical-align: middle;">
+                <div class="hospital-name" th:text="${hospitalName}">City Care Multispeciality Hospital</div>
+                <div class="hospital-info" th:text="${hospitalAddress}">123 Healthcare Boulevard, Tech City</div>
+                <div class="hospital-info">Emergency Helpline: <span th:text="${hospitalPhone}">+1 800-555-0199</span></div>
+            </td>
+            <td style="text-align: right; vertical-align: middle; width: 120px;">
+                <span style="background: #e0f2fe; color: #0369a1; padding: 6px 10px; border-radius: 4px; font-size: 8pt; font-weight: bold;">
+                    OFFICIAL SLIP
+                </span>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Queue Token Box -->
+    <table class="badge-table">
+        <tr>
+            <td class="token-box">
+                <div class="token-label">YOUR APPOINTMENT TOKEN</div>
+                <div class="token-number" th:text="'#' + ${serialNumber}">#14</div>
+                <div style="font-size: 9pt; color: #64748b;">Please arrive 15 minutes before your scheduled slot</div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Appointment & Doctor Details -->
+    <table class="info-table">
+        <tr>
+            <td class="label">Consulting Doctor:</td>
+            <td class="value"><strong th:text="${doctorName}">Dr. Sarah Jenkins</strong> (<span th:text="${department}">Cardiology</span>)</td>
+        </tr>
+        <tr>
+            <td class="label">OPD Room:</td>
+            <td class="value">Room <span th:text="${roomNumber}">104</span></td>
+        </tr>
+        <tr>
+            <td class="label">Date & Time:</td>
+            <td class="value"><strong th:text="${appointmentDate}">22 September 2026</strong> at <span th:text="${timeSlot}">11:30 AM</span></td>
+        </tr>
+        <tr>
+            <td class="label">Patient Mobile:</td>
+            <td class="value" th:text="${patientPhone}">+91 9876543210</td>
+        </tr>
+        <tr>
+            <td class="label">Consultation Fee:</td>
+            <td class="value">$<span th:text="${fee}">50.00</span> (Pay at front desk)</td>
+        </tr>
+    </table>
+
+    <!-- Reception Check-In QR Code -->
+    <div class="qr-section">
+        <img class="qr-image" th:src="${qrCodeBase64}" alt="Check-In QR Code"/>
+        <div class="qr-caption">Scan at the Reception Desk for Instant Check-In</div>
+        <div style="font-family: monospace; font-size: 8pt; color: #94a3b8; margin-top: 3px;" th:text="${qrToken}">
+            APPT-TOKEN-8492049
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        Generated via WhatsApp Medical Assistant • Valid only for the date mentioned above.
+    </div>
+
+</body>
+</html>

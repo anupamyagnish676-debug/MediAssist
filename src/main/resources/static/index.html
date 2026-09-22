@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Operations Hub | WhatsApp Medical Assistant</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/index.html" class="navbar-brand">
+            🏥 <span>MedAssist Hospital Operations</span>
+        </a>
+        <ul class="navbar-links">
+            <li><a href="/index.html" class="active">Overview</a></li>
+            <li><a href="/doctor-roster.html">Doctor Roster</a></li>
+            <li><a href="/receptionist.html">Receptionist QR Check-In</a></li>
+            <li><a href="/token-display.html" target="_blank">TV Waiting Screen ↗</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Hospital Management Dashboard</h1>
+            <p>Monitor patient queue tokens, doctor availability, and WhatsApp appointments in real time.</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">🏥</div>
+                <div class="stat-content">
+                    <h3>Registered Hospitals</h3>
+                    <div class="stat-number" id="total-hospitals">3</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">👨‍⚕️</div>
+                <div class="stat-content">
+                    <h3>Active Doctors</h3>
+                    <div class="stat-number" id="total-doctors">6</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📅</div>
+                <div class="stat-content">
+                    <h3>Today's WhatsApp Bookings</h3>
+                    <div class="stat-number" id="today-bookings">2</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">✅</div>
+                <div class="stat-content">
+                    <h3>Checked-In (QR Scanned)</h3>
+                    <div class="stat-number" id="total-checked-in">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span>Today's WhatsApp Appointments</span>
+                <button class="btn btn-outline btn-sm" onclick="loadDashboard()">🔄 Refresh</button>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Token #</th>
+                            <th>Patient Phone</th>
+                            <th>Doctor</th>
+                            <th>Department</th>
+                            <th>Time Slot</th>
+                            <th>Status</th>
+                            <th>QR Token</th>
+                        </tr>
+                    </thead>
+                    <tbody id="appointments-tbody">
+                        <tr><td colspan="7" style="text-align: center; color: var(--gray-400);">Loading appointments...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        async function loadDashboard() {
+            try {
+                const hospitals = await App.getHospitals();
+                document.getElementById('total-hospitals').innerText = hospitals.length;
+
+                const appointments = await App.getTodayAppointments(1);
+                document.getElementById('today-bookings').innerText = appointments.length;
+
+                const checkedInCount = appointments.filter(a => a.status === 'CHECKED_IN').length;
+                document.getElementById('total-checked-in').innerText = checkedInCount;
+
+                const tbody = document.getElementById('appointments-tbody');
+                if (appointments.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No appointments booked yet for today.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = appointments.map(a => `
+                    <tr>
+                        <td><strong style="color: var(--primary); font-size: 1.1rem;">#${String(a.serialNumber).padStart(2, '0')}</strong></td>
+                        <td>${a.patientPhone}</td>
+                        <td>${a.doctor.name}</td>
+                        <td>${a.doctor.department}</td>
+                        <td>${a.timeSlot}</td>
+                        <td>
+                            <span class="badge ${a.status === 'CHECKED_IN' ? 'badge-success' : 'badge-warning'}">
+                                ${a.status}
+                            </span>
+                        </td>
+                        <td><code style="background: var(--gray-100); padding: 2px 6px; border-radius: 4px;">${a.qrCodeToken}</code></td>
+                    </tr>
+                `).join('');
+
+            } catch (err) {
+                console.error("Failed to load dashboard data:", err);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', loadDashboard);
+    </script>
+</body>
+</html>

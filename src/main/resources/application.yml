@@ -1,0 +1,75 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: whatsapp-medical-assistant
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
+
+# Development Profile (H2 In-Memory Database - Zero configuration needed)
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:h2:mem:medassistantdb;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driverClassName: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+app:
+  whatsapp:
+    verify-token: ${WHATSAPP_VERIFY_TOKEN:my_medical_bot_verify_token_2026}
+    access-token: ${WHATSAPP_ACCESS_TOKEN:EAAG_SAMPLE_DEV_TOKEN}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:100000000000000}
+    api-url: https://graph.facebook.com/v20.0
+  ai:
+    gemini:
+      api-key: ${GEMINI_API_KEY:mock_gemini_key_for_dev}
+      model: gemini-1.5-flash
+  storage:
+    upload-dir: ./uploads
+
+# Production Profile (PostgreSQL + PostGIS + S3)
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/meddb}
+    username: ${SPRING_DATASOURCE_USERNAME:medadmin}
+    password: ${SPRING_DATASOURCE_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+app:
+  whatsapp:
+    verify-token: ${WHATSAPP_VERIFY_TOKEN}
+    access-token: ${WHATSAPP_ACCESS_TOKEN}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID}
+    api-url: https://graph.facebook.com/v20.0
+  ai:
+    gemini:
+      api-key: ${GEMINI_API_KEY}
+      model: gemini-1.5-flash
+  storage:
+    upload-dir: ${STORAGE_UPLOAD_DIR:/var/medbot/uploads}
