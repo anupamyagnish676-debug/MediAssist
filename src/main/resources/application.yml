@@ -35,7 +35,7 @@ spring:
 app:
   whatsapp:
     verify-token: ${WHATSAPP_VERIFY_TOKEN:my_medical_bot_verify_token_2026}
-    access-token: ${WHATSAPP_ACCESS_TOKEN:EAAG_SAMPLE_DEV_TOKEN}
+    access-token: ${WHATSAPP_TOKEN:${WHATSAPP_ACCESS_TOKEN:EAAG_SAMPLE_DEV_TOKEN}}
     phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:100000000000000}
     api-url: https://graph.facebook.com/v20.0
   ai:
@@ -64,7 +64,7 @@ spring:
 app:
   whatsapp:
     verify-token: ${WHATSAPP_VERIFY_TOKEN}
-    access-token: ${WHATSAPP_ACCESS_TOKEN}
+    access-token: ${WHATSAPP_TOKEN:${WHATSAPP_ACCESS_TOKEN:}}
     phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID}
     api-url: https://graph.facebook.com/v20.0
   ai:

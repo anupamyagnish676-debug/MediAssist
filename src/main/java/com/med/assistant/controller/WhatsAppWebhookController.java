@@ -81,7 +81,7 @@ public class WhatsAppWebhookController {
     @PostMapping("/webhook")
     public ResponseEntity<String> handleInboundMessage(@RequestBody Map<String, Object> payload) {
         try {
-            logger.debug("Received WhatsApp webhook payload: {}", payload);
+            logger.info("Received WhatsApp webhook payload: {}", payload);
 
             List<Map<String, Object>> entries = (List<Map<String, Object>>) payload.get("entry");
             if (entries == null || entries.isEmpty()) return ResponseEntity.ok("EVENT_RECEIVED");

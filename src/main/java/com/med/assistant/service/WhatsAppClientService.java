@@ -125,15 +125,18 @@ public class WhatsAppClientService {
 
         try {
             String url = apiUrl + "/" + phoneNumberId + "/messages";
+            logger.info("Posting outbound message to Meta API: url={}, recipient={}", url, payload.get("to"));
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(accessToken);
+            headers.setBearerAuth(accessToken.trim());
 
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
-            restTemplate.postForEntity(url, entity, String.class);
-            logger.info("WhatsApp message sent successfully to {}", payload.get("to"));
+            ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
+            logger.info("WhatsApp message sent successfully! Meta Response: {}", response.getBody());
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            logger.error("Meta API HTTP Error {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
         } catch (Exception e) {
-            logger.error("Failed to send WhatsApp message: {}", e.getMessage());
+            logger.error("Failed to send WhatsApp message: {}", e.getMessage(), e);
         }
     }
 }
