@@ -4,10 +4,12 @@ import com.med.assistant.model.Appointment;
 import com.med.assistant.model.Doctor;
 import com.med.assistant.model.Hospital;
 import com.med.assistant.model.MedicationReminder;
+import com.med.assistant.model.User;
 import com.med.assistant.repository.AppointmentRepository;
 import com.med.assistant.repository.DoctorRepository;
 import com.med.assistant.repository.HospitalRepository;
 import com.med.assistant.repository.MedicationReminderRepository;
+import com.med.assistant.repository.UserRepository;
 import com.med.assistant.service.AppointmentSlipPdfService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +30,8 @@ public class DataInitializer {
                                           DoctorRepository doctorRepo,
                                           AppointmentRepository apptRepo,
                                           MedicationReminderRepository reminderRepo,
+                                          UserRepository userRepo,
+                                          org.springframework.security.crypto.password.PasswordEncoder passwordEncoder,
                                           AppointmentSlipPdfService pdfService) {
         return args -> {
             if (hospitalRepo.count() > 0) return;
@@ -105,7 +109,35 @@ public class DataInitializer {
             MedicationReminder rem1 = new MedicationReminder("+919876543210", "Metformin 500mg", "1 tablet post-dinner", "21:00");
             reminderRepo.save(rem1);
 
-            logger.info("Demo database seeded successfully! Ready for WhatsApp and web portal.");
+            // 6. Seed Super Admin & Hospital Managers
+            com.med.assistant.model.User admin = new com.med.assistant.model.User(
+                    "admin@mediassist.com",
+                    passwordEncoder.encode("Admin@123"),
+                    "Platform Administrator",
+                    com.med.assistant.model.User.Role.SUPER_ADMIN,
+                    null
+            );
+            userRepo.save(admin);
+
+            com.med.assistant.model.User manager1 = new com.med.assistant.model.User(
+                    "manager@citycare.com",
+                    passwordEncoder.encode("Manager@123"),
+                    "City Care Operations Manager",
+                    com.med.assistant.model.User.Role.HOSPITAL_MANAGER,
+                    h1
+            );
+            userRepo.save(manager1);
+
+            com.med.assistant.model.User manager2 = new com.med.assistant.model.User(
+                    "manager@apollo.com",
+                    passwordEncoder.encode("Manager@123"),
+                    "Apollo Clinic Desk Incharge",
+                    com.med.assistant.model.User.Role.HOSPITAL_MANAGER,
+                    h2
+            );
+            userRepo.save(manager2);
+
+            logger.info("Demo database & accounts seeded successfully! Admin: admin@mediassist.com / Admin@123");
         };
     }
 }

@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Company Platform Super Admin | MediAssist</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .role-badge {
+            background: #fef3c7;
+            color: #92400e;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal {
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 2rem;
+            max-width: 450px;
+            width: 100%;
+            box-shadow: var(--shadow-lg);
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/admin-portal.html" class="navbar-brand">
+            👑 <span>MediAssist Platform Super Admin</span>
+        </a>
+        <div style="display:flex; align-items:center; gap: 1rem;">
+            <span class="role-badge">👑 Super Admin</span>
+            <span id="user-display" style="font-size: 0.9rem; font-weight: 600;">admin@mediassist.com</span>
+            <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Platform Administration & Hospital Network</h1>
+            <p>Global company view: Approve new clinics, view all registered hospitals, and provision hospital manager logins.</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">🏥</div>
+                <div class="stat-content">
+                    <h3>Total Hospitals</h3>
+                    <div class="stat-number" id="total-hospitals">0</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#dcfce7; color:#16a34a;">✅</div>
+                <div class="stat-content">
+                    <h3>Active Hospitals</h3>
+                    <div class="stat-number" id="active-hospitals">0</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background:#ffedd5; color:#ea580c;">⏳</div>
+                <div class="stat-content">
+                    <h3>Pending Approval</h3>
+                    <div class="stat-number" id="pending-hospitals">0</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">👨‍⚕️</div>
+                <div class="stat-content">
+                    <h3>Total Network Doctors</h3>
+                    <div class="stat-number" id="total-doctors">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span>All Registered Hospitals Across Network</span>
+                <button class="btn btn-outline btn-sm" onclick="loadAdminData()">🔄 Refresh</button>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Hospital Name</th>
+                            <th>Address & Helpline</th>
+                            <th>Status</th>
+                            <th>Doctors</th>
+                            <th>Assigned Managers</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="hospitals-tbody">
+                        <tr><td colspan="6" style="text-align: center; color: var(--gray-400);">Loading hospital network data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Creating Hospital Manager Login -->
+    <div class="modal-overlay" id="manager-modal">
+        <div class="modal">
+            <h3 style="margin-bottom: 0.5rem;" id="modal-hospital-name">Create Manager Account</h3>
+            <p style="font-size: 0.85rem; color: var(--gray-600); margin-bottom: 1.25rem;">
+                This login will be scoped ONLY to manage this specific hospital.
+            </p>
+            <form onsubmit="handleCreateManager(event)">
+                <input type="hidden" id="modal-hospital-id" />
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label style="font-weight: 600; font-size: 0.85rem;">Manager Full Name *</label>
+                    <input type="text" id="mgr-name" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid var(--gray-300);" required />
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label style="font-weight: 600; font-size: 0.85rem;">Manager Email *</label>
+                    <input type="email" id="mgr-email" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid var(--gray-300);" required />
+                </div>
+                <div class="form-group" style="margin-bottom: 1.5rem;">
+                    <label style="font-weight: 600; font-size: 0.85rem;">Password *</label>
+                    <input type="password" id="mgr-password" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid var(--gray-300);" required />
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Create Manager Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        async function checkSuperAdminAuth() {
+            try {
+                const res = await fetch('/api/v1/auth/me');
+                if (!res.ok) { window.location.href = '/login.html'; return; }
+                const user = await res.json();
+                if (user.role !== 'SUPER_ADMIN') {
+                    alert("Access Denied: Super Admin role required.");
+                    window.location.href = '/login.html';
+                    return;
+                }
+                document.getElementById('user-display').innerText = user.email;
+            } catch (e) {
+                window.location.href = '/login.html';
+            }
+        }
+
+        async function loadAdminData() {
+            try {
+                const [statsRes, hospitalsRes] = await Promise.all([
+                    fetch('/api/v1/admin/stats'),
+                    fetch('/api/v1/admin/hospitals')
+                ]);
+
+                if (statsRes.ok) {
+                    const stats = await statsRes.json();
+                    document.getElementById('total-hospitals').innerText = stats.totalHospitals;
+                    document.getElementById('active-hospitals').innerText = stats.activeHospitals;
+                    document.getElementById('pending-hospitals').innerText = stats.pendingHospitals;
+                    document.getElementById('total-doctors').innerText = stats.totalDoctors;
+                }
+
+                if (hospitalsRes.ok) {
+                    const hospitals = await hospitalsRes.json();
+                    const tbody = document.getElementById('hospitals-tbody');
+
+                    if (hospitals.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No hospitals registered yet.</td></tr>';
+                        return;
+                    }
+
+                    tbody.innerHTML = hospitals.map(h => {
+                        let statusBadge = '<span class="badge badge-success">ACTIVE</span>';
+                        if (h.status === 'PENDING_APPROVAL') statusBadge = '<span class="badge badge-warning">PENDING APPROVAL</span>';
+                        if (h.status === 'SUSPENDED') statusBadge = '<span class="badge badge-danger">SUSPENDED</span>';
+
+                        const managerBadges = h.managers && h.managers.length > 0
+                            ? h.managers.map(m => `<span style="display:inline-block; background:var(--gray-100); padding:2px 8px; border-radius:4px; font-size:0.8rem; margin:2px;">👤 ${m.email}</span>`).join('')
+                            : '<span style="color:var(--gray-400); font-size:0.8rem;">No Manager Assigned</span>';
+
+                        return `
+                            <tr>
+                                <td>
+                                    <strong>${h.name}</strong><br>
+                                    <span style="font-size:0.75rem; color:var(--gray-400);">ID: #${h.id}</span>
+                                </td>
+                                <td>
+                                    <span style="font-size:0.85rem;">${h.address}</span><br>
+                                    <span style="font-size:0.8rem; color:var(--primary);">📞 ${h.phone}</span>
+                                </td>
+                                <td>${statusBadge}</td>
+                                <td><strong>${h.doctorCount}</strong> Doctors</td>
+                                <td>${managerBadges}</td>
+                                <td>
+                                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                                        ${h.status !== 'ACTIVE' ? `<button class="btn btn-sm btn-primary" onclick="updateStatus(${h.id}, 'ACTIVE')">Approve</button>` : ''}
+                                        ${h.status === 'ACTIVE' ? `<button class="btn btn-sm btn-outline" style="color:var(--danger);" onclick="updateStatus(${h.id}, 'SUSPENDED')">Suspend</button>` : ''}
+                                        <button class="btn btn-sm btn-outline" onclick="openManagerModal(${h.id}, '${h.name}')">+ Manager</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                console.error("Failed to load admin data:", err);
+            }
+        }
+
+        async function updateStatus(hospId, newStatus) {
+            await fetch(`/api/v1/admin/hospitals/${hospId}/status?status=${newStatus}`, { method: 'POST' });
+            loadAdminData();
+        }
+
+        function openManagerModal(id, name) {
+            document.getElementById('modal-hospital-id').value = id;
+            document.getElementById('modal-hospital-name').innerText = `Add Manager for: ${name}`;
+            document.getElementById('manager-modal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('manager-modal').style.display = 'none';
+        }
+
+        async function handleCreateManager(e) {
+            e.preventDefault();
+            const hospId = document.getElementById('modal-hospital-id').value;
+            const payload = {
+                fullName: document.getElementById('mgr-name').value,
+                email: document.getElementById('mgr-email').value,
+                password: document.getElementById('mgr-password').value
+            };
+
+            const res = await fetch(`/api/v1/admin/hospitals/${hospId}/managers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                alert("Manager account created successfully!");
+                closeModal();
+                loadAdminData();
+            } else {
+                const err = await res.json();
+                alert("Failed: " + (err.message || "Could not create manager"));
+            }
+        }
+
+        async function logout() {
+            await fetch('/api/v1/auth/logout', { method: 'POST' });
+            sessionStorage.clear();
+            window.location.href = '/login.html';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkSuperAdminAuth();
+            loadAdminData();
+        });
+    </script>
+</body>
+</html>

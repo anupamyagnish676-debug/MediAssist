@@ -23,6 +23,15 @@ public class Hospital {
     private String brandColor = "#0284c7"; // Default medical blue
     private boolean active = true;
 
+    @Enumerated(EnumType.STRING)
+    private Status status = Status.ACTIVE;
+
+    public enum Status {
+        PENDING_APPROVAL,
+        ACTIVE,
+        SUSPENDED
+    }
+
     @OneToMany(mappedBy = "hospital", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Doctor> doctors = new ArrayList<>();
 
@@ -68,4 +77,7 @@ public class Hospital {
 
     public List<Doctor> getDoctors() { return doctors; }
     public void setDoctors(List<Doctor> doctors) { this.doctors = doctors; }
+
+    public Status getStatus() { return status; }
+    public void setStatus(Status status) { this.status = status; }
 }
