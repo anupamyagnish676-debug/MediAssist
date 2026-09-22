@@ -339,47 +339,62 @@
             appendMessage(text, true);
             input.value = '';
 
-            const reply = await sendToBackend({
-                patientPhone: "+919876543210",
-                messageType: "text",
-                text: text
-            });
-
-            appendMessage(reply.replyText, false);
+            try {
+                const reply = await sendToBackend({
+                    patientPhone: "+919876543210",
+                    messageType: "text",
+                    text: text
+                });
+                appendMessage(reply && reply.replyText ? reply.replyText : "⚠️ No response from assistant.", false);
+            } catch (err) {
+                appendMessage("❌ Network error connecting to medical bot.", false);
+            }
         }
 
         async function sendQuickMessage(text) {
             appendMessage(text, true);
-            const reply = await sendToBackend({
-                patientPhone: "+919876543210",
-                messageType: "text",
-                text: text
-            });
-            appendMessage(reply.replyText, false);
+            try {
+                const reply = await sendToBackend({
+                    patientPhone: "+919876543210",
+                    messageType: "text",
+                    text: text
+                });
+                appendMessage(reply && reply.replyText ? reply.replyText : "⚠️ No response from assistant.", false);
+            } catch (err) {
+                appendMessage("❌ Network error connecting to medical bot.", false);
+            }
         }
 
         async function triggerLocationBooking() {
             appendMessage("📍 Shared GPS Location (28.6139, 77.2090)", true);
 
-            const reply = await sendToBackend({
-                patientPhone: "+919876543210",
-                messageType: "location",
-                latitude: 28.6139,
-                longitude: 77.2090
-            });
-
-            let html = reply.replyText + "<br>";
-            if (reply.interactiveOptions) {
-                reply.interactiveOptions.forEach(opt => {
-                    html += `
-                        <div class="interactive-card" onclick="selectAction('${opt.id}', '${opt.title}')">
-                            <strong>${opt.title}</strong><br>
-                            <span style="font-size:0.75rem; color:#64748b;">${opt.subtitle}</span>
-                        </div>
-                    `;
+            try {
+                const reply = await sendToBackend({
+                    patientPhone: "+919876543210",
+                    messageType: "location",
+                    latitude: 28.6139,
+                    longitude: 77.2090
                 });
+
+                if (reply && reply.replyText) {
+                    let html = reply.replyText + "<br>";
+                    if (reply.interactiveOptions) {
+                        reply.interactiveOptions.forEach(opt => {
+                            html += `
+                                <div class="interactive-card" onclick="selectAction('${opt.id}', '${opt.title}')">
+                                    <strong>${opt.title}</strong><br>
+                                    <span style="font-size:0.75rem; color:#64748b;">${opt.subtitle}</span>
+                                </div>
+                            `;
+                        });
+                    }
+                    appendMessage(html, false);
+                } else {
+                    appendMessage("⚠️ No hospitals found near this location.", false);
+                }
+            } catch (err) {
+                appendMessage("❌ Could not connect to hospital locator service.", false);
             }
-            appendMessage(html, false);
         }
 
         async function selectAction(actionId, title) {
