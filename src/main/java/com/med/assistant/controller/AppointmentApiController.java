@@ -88,4 +88,21 @@ public class AppointmentApiController {
 
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/{id}/pdf")
+    public ResponseEntity<byte[]> downloadPdf(@PathVariable Long id) {
+        Optional<Appointment> opt = appointmentRepository.findById(id);
+        if (opt.isEmpty() || opt.get().getPdfFilePath() == null) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            byte[] fileBytes = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(opt.get().getPdfFilePath()));
+            return ResponseEntity.ok()
+                    .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/pdf")
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Appointment_Token_" + opt.get().getSerialNumber() + ".pdf\"")
+                    .body(fileBytes);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
 }

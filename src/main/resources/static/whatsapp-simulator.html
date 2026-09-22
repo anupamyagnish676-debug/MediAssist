@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Medical AI Simulator & Test Studio | MedAssist</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .simulator-layout {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 2rem;
+            align-items: start;
+        }
+        .phone-frame {
+            width: 100%;
+            height: 700px;
+            background: #ffffff;
+            border-radius: 36px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            border: 12px solid #1e293b;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        .phone-notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 18px;
+            background: #1e293b;
+            border-bottom-left-radius: 12px;
+            border-bottom-right-radius: 12px;
+            z-index: 10;
+        }
+        .wa-header {
+            background-color: #075e54;
+            color: #ffffff;
+            padding: 1.5rem 1rem 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .wa-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #25d366;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+        .wa-title h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 0;
+        }
+        .wa-title p {
+            font-size: 0.75rem;
+            color: #bbf7d0;
+            margin: 0;
+        }
+        .wa-chat-body {
+            flex: 1;
+            background-color: #efeae2;
+            background-image: radial-gradient(#d1d7db 1px, transparent 1px);
+            background-size: 16px 16px;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .msg {
+            max-width: 85%;
+            padding: 0.6rem 0.85rem;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            line-height: 1.4;
+            position: relative;
+            word-wrap: break-word;
+        }
+        .msg-in {
+            align-self: flex-start;
+            background-color: #ffffff;
+            border-top-left-radius: 2px;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.08);
+        }
+        .msg-out {
+            align-self: flex-end;
+            background-color: #d9fdd3;
+            border-top-right-radius: 2px;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.08);
+        }
+        .msg-time {
+            font-size: 0.65rem;
+            color: #667781;
+            text-align: right;
+            margin-top: 4px;
+        }
+        .interactive-card {
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .interactive-card:hover {
+            border-color: #0284c7;
+            background: #e0f2fe;
+        }
+        .pdf-download-card {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-top: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .pdf-download-btn {
+            background: #16a34a;
+            color: #ffffff;
+            border: none;
+            padding: 0.4rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .wa-input-bar {
+            background: #f0f2f5;
+            padding: 0.5rem 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .wa-input-bar input {
+            flex: 1;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 0.6rem 1rem;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        .btn-send {
+            background: #00a884;
+            color: #ffffff;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+        }
+        .test-tools-card {
+            background: #ffffff;
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            border: 1px solid var(--gray-200);
+            box-shadow: var(--shadow);
+        }
+        .quick-action-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+            text-align: left;
+            padding: 0.85rem 1rem;
+            margin-bottom: 0.75rem;
+            background: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.15s;
+        }
+        .quick-action-btn:hover {
+            background: #e0f2fe;
+            border-color: #0284c7;
+            color: #0369a1;
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/index.html" class="navbar-brand">
+            🏥 <span>MedAssist Hospital Operations</span>
+        </a>
+        <ul class="navbar-links">
+            <li><a href="/index.html">Overview</a></li>
+            <li><a href="/whatsapp-simulator.html" class="active">💬 WhatsApp Simulator</a></li>
+            <li><a href="/hospital-register.html">Register Hospital</a></li>
+            <li><a href="/doctor-roster.html">Doctor Roster</a></li>
+            <li><a href="/receptionist.html">Receptionist QR Check-In</a></li>
+            <li><a href="/token-display.html" target="_blank">TV Waiting Screen ↗</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>WhatsApp Patient Interactive Test Studio</h1>
+            <p>Experience and test all patient features (Location Booking, AI Triage, PDF Slip Generation) with <strong>zero WhatsApp account needed</strong>!</p>
+        </div>
+
+        <div class="simulator-layout">
+            <!-- Left: Mobile WhatsApp Mockup -->
+            <div class="phone-frame">
+                <div class="phone-notch"></div>
+                
+                <div class="wa-header">
+                    <div class="wa-avatar">🩺</div>
+                    <div class="wa-title">
+                        <h4>MediAssist AI Medical Bot</h4>
+                        <p>● online</p>
+                    </div>
+                </div>
+
+                <div class="wa-chat-body" id="chat-body">
+                    <div class="msg msg-in">
+                        👋 Namaste! I am your AI Medical Assistant.<br><br>
+                        • Share your location to discover nearby hospitals.<br>
+                        • Tell me your symptoms for triage.<br>
+                        • Upload prescriptions to your Report Wardrobe.
+                        <div class="msg-time">Just now</div>
+                    </div>
+                </div>
+
+                <form class="wa-input-bar" onsubmit="handleSendText(event)">
+                    <button type="button" onclick="triggerLocationBooking()" title="Share Location" style="background:none; border:none; font-size:1.3rem; cursor:pointer;">📍</button>
+                    <input type="text" id="user-input" placeholder="Type a message or symptom..." autocomplete="off" />
+                    <button type="submit" class="btn-send">➤</button>
+                </form>
+            </div>
+
+            <!-- Right: One-Click Test Suite -->
+            <div class="test-tools-card">
+                <h3 style="margin-bottom: 0.5rem; color: var(--secondary);">⚡ One-Click Feature Test Suite</h3>
+                <p style="font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1.5rem;">
+                    Click any test scenario to simulate real patient interactions instantly:
+                </p>
+
+                <button class="quick-action-btn" onclick="triggerLocationBooking()">
+                    <span style="font-size: 1.3rem;">📍</span>
+                    <div>
+                        <div>Simulate Location Sharing & Doctor Booking</div>
+                        <div style="font-size: 0.75rem; color: var(--gray-600); font-weight: normal;">
+                            Finds nearby hospitals, selects doctor, and generates official PDF slip with Token #
+                        </div>
+                    </div>
+                </button>
+
+                <button class="quick-action-btn" onclick="sendQuickMessage('I have a high fever, chills, and sore throat since yesterday.')">
+                    <span style="font-size: 1.3rem;">🩺</span>
+                    <div>
+                        <div>Test AI Clinical Symptom Triage</div>
+                        <div style="font-size: 0.75rem; color: var(--gray-600); font-weight: normal;">
+                            AI assesses symptoms, provides home care, and suggests which specialist to see
+                        </div>
+                    </div>
+                </button>
+
+                <button class="quick-action-btn" onclick="sendQuickMessage('Severe chest pain radiating to left arm and difficulty breathing')">
+                    <span style="font-size: 1.3rem;">🚨</span>
+                    <div>
+                        <div>Test Emergency Red-Flag Watchdog</div>
+                        <div style="font-size: 0.75rem; color: var(--gray-600); font-weight: normal;">
+                            Triggers instant emergency hotline alert (112 / 911 / 108) and halts normal chat
+                        </div>
+                    </div>
+                </button>
+
+                <button class="quick-action-btn" onclick="simulateMedicationAlert()">
+                    <span style="font-size: 1.3rem;">💊</span>
+                    <div>
+                        <div>Simulate 1-Click Medication Reminder</div>
+                        <div style="font-size: 0.75rem; color: var(--gray-600); font-weight: normal;">
+                            Triggers interactive pill reminder with [Taken] and [Snooze 15m] buttons
+                        </div>
+                    </div>
+                </button>
+
+                <div style="margin-top: 1.5rem; padding: 1rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+                    <h4 style="color: #166534; font-size: 0.9rem; margin-bottom: 0.35rem;">💡 How to test the Hospital Desk check-in:</h4>
+                    <p style="font-size: 0.8rem; color: #15803d; line-height: 1.4;">
+                        1. Click <strong>"Simulate Location Sharing & Doctor Booking"</strong> on the left.<br>
+                        2. Select a hospital and book a doctor.<br>
+                        3. Click <strong>"📄 Download / Preview PDF Slip"</strong> in the chat bubble.<br>
+                        4. Open <a href="/receptionist.html" target="_blank" style="font-weight:bold; color:#15803d;">Receptionist QR Check-In</a> and hold the QR code to your webcam!
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const chatBody = document.getElementById('chat-body');
+
+        function appendMessage(text, isUser = false) {
+            const msg = document.createElement('div');
+            msg.className = `msg ${isUser ? 'msg-out' : 'msg-in'}`;
+            msg.innerHTML = text.replace(/\n/g, '<br>') + `<div class="msg-time">Just now</div>`;
+            chatBody.appendChild(msg);
+            chatBody.scrollTop = chatBody.scrollHeight;
+            return msg;
+        }
+
+        async function sendToBackend(payload) {
+            const res = await fetch('/api/v1/simulator/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            return await res.json();
+        }
+
+        async function handleSendText(e) {
+            e.preventDefault();
+            const input = document.getElementById('user-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            appendMessage(text, true);
+            input.value = '';
+
+            const reply = await sendToBackend({
+                patientPhone: "+919876543210",
+                messageType: "text",
+                text: text
+            });
+
+            appendMessage(reply.replyText, false);
+        }
+
+        async function sendQuickMessage(text) {
+            appendMessage(text, true);
+            const reply = await sendToBackend({
+                patientPhone: "+919876543210",
+                messageType: "text",
+                text: text
+            });
+            appendMessage(reply.replyText, false);
+        }
+
+        async function triggerLocationBooking() {
+            appendMessage("📍 Shared GPS Location (28.6139, 77.2090)", true);
+
+            const reply = await sendToBackend({
+                patientPhone: "+919876543210",
+                messageType: "location",
+                latitude: 28.6139,
+                longitude: 77.2090
+            });
+
+            let html = reply.replyText + "<br>";
+            if (reply.interactiveOptions) {
+                reply.interactiveOptions.forEach(opt => {
+                    html += `
+                        <div class="interactive-card" onclick="selectAction('${opt.id}', '${opt.title}')">
+                            <strong>${opt.title}</strong><br>
+                            <span style="font-size:0.75rem; color:#64748b;">${opt.subtitle}</span>
+                        </div>
+                    `;
+                });
+            }
+            appendMessage(html, false);
+        }
+
+        async function selectAction(actionId, title) {
+            appendMessage(`👉 Selected: ${title}`, true);
+
+            const reply = await sendToBackend({
+                patientPhone: "+919876543210",
+                messageType: "action",
+                actionId: actionId
+            });
+
+            let html = reply.replyText + "<br>";
+
+            if (reply.interactiveOptions) {
+                reply.interactiveOptions.forEach(opt => {
+                    html += `
+                        <div class="interactive-card" onclick="selectAction('${opt.id}', '${opt.title}')">
+                            👨‍⚕️ <strong>${opt.title}</strong>
+                        </div>
+                    `;
+                });
+            }
+
+            if (reply.documentUrl) {
+                html += `
+                    <div class="pdf-download-card">
+                        <span style="font-size: 2rem;">📄</span>
+                        <div style="flex:1;">
+                            <div style="font-weight: bold; font-size: 0.85rem;">Official Appointment Slip (#${reply.tokenNumber})</div>
+                            <div style="font-size: 0.75rem; color: #166534;">Generated with QR Code</div>
+                        </div>
+                        <a href="${reply.documentUrl}" target="_blank" class="pdf-download-btn">Open PDF</a>
+                    </div>
+                `;
+            }
+
+            appendMessage(html, false);
+        }
+
+        function simulateMedicationAlert() {
+            let html = `
+                💊 <strong>Medication Alert (9:00 PM)</strong><br>
+                Time for your <strong>Metformin 500mg</strong> (1 Tablet - Post-dinner)<br><br>
+                <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+                    <button class="pdf-download-btn" onclick="selectAction('MED_TAKEN_1', 'Taken ✅')">Taken ✅</button>
+                    <button class="pdf-download-btn" style="background:#ea580c;" onclick="selectAction('MED_SNOOZE_1', 'Snooze 15m ⏰')">Snooze 15m ⏰</button>
+                </div>
+            `;
+            appendMessage(html, false);
+        }
+    </script>
+</body>
+</html>
