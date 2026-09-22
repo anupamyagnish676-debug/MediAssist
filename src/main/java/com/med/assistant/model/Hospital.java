@@ -32,7 +32,7 @@ public class Hospital {
         SUSPENDED
     }
 
-    @OneToMany(mappedBy = "hospital", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "hospital", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<Doctor> doctors = new ArrayList<>();
 
     public Hospital() {}
