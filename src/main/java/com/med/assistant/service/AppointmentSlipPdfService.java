@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
+import java.util.UUID;
 
 @Service
 public class AppointmentSlipPdfService {
@@ -34,36 +35,7 @@ public class AppointmentSlipPdfService {
 
     public String generatePdfSlip(Appointment appointment) {
         try {
-            // 1. Generate Base64 QR Code
-            QRCodeWriter qrCodeWriter = new QRCodeWriter();
-            String qrPayload = "APPT:" + appointment.getQrCodeToken();
-            BitMatrix bitMatrix = qrCodeWriter.encode(qrPayload, BarcodeFormat.QR_CODE, 200, 200);
-            ByteArrayOutputStream qrStream = new ByteArrayOutputStream();
-            MatrixToImageWriter.writeToStream(bitMatrix, "PNG", qrStream);
-            String qrBase64 = "data:image/png;base64," + Base64.getEncoder().encodeToString(qrStream.toByteArray());
-
-            // 2. Prepare Template Context
-            Context context = new Context();
-            context.setVariable("hospitalName", appointment.getHospital().getName());
-            context.setVariable("hospitalAddress", appointment.getHospital().getAddress());
-            context.setVariable("hospitalPhone", appointment.getHospital().getPhone());
-            context.setVariable("brandColor", appointment.getHospital().getBrandColor());
-            context.setVariable("doctorName", appointment.getDoctor().getName());
-            context.setVariable("department", appointment.getDoctor().getDepartment());
-            context.setVariable("roomNumber", appointment.getDoctor().getRoomNumber());
-            context.setVariable("patientName", appointment.getPatientName());
-            context.setVariable("patientPhone", appointment.getPatientPhone());
-            context.setVariable("appointmentDate", appointment.getAppointmentDate().format(DateTimeFormatter.ofPattern("dd MMMM yyyy")));
-            context.setVariable("timeSlot", appointment.getTimeSlot());
-            context.setVariable("serialNumber", String.format("%02d", appointment.getSerialNumber()));
-            context.setVariable("qrCodeBase64", qrBase64);
-            context.setVariable("qrToken", appointment.getQrCodeToken());
-            context.setVariable("fee", appointment.getDoctor().getConsultationFee());
-
-            // 3. Render HTML
-            String renderedHtml = templateEngine.process("appointment-slip", context);
-
-            // 4. Ensure directories exist safely
+            // 1. Ensure slips directory exists safely
             Path slipsPath;
             try {
                 slipsPath = Paths.get(uploadDir, "slips");
@@ -73,14 +45,42 @@ public class AppointmentSlipPdfService {
                 Files.createDirectories(slipsPath);
             }
 
-            String fileName = "Appointment_Token_" + appointment.getSerialNumber() + "_" + appointment.getQrCodeToken() + ".pdf";
-            File outputFile = slipsPath.resolve(fileName).toFile();
+            // 2. Generate QR Code image file
+            String token = appointment.getQrCodeToken() != null ? appointment.getQrCodeToken() : UUID.randomUUID().toString().substring(0, 8);
+            File qrFile = slipsPath.resolve("qr_" + token + ".png").toFile();
+            QRCodeWriter qrCodeWriter = new QRCodeWriter();
+            BitMatrix bitMatrix = qrCodeWriter.encode("APPT:" + token, BarcodeFormat.QR_CODE, 200, 200);
+            MatrixToImageWriter.writeToPath(bitMatrix, "PNG", qrFile.toPath());
+
+            // 3. Prepare Template Context
+            Context context = new Context();
+            context.setVariable("hospitalName", appointment.getHospital() != null ? appointment.getHospital().getName() : "MedAssist Partner Hospital");
+            context.setVariable("hospitalAddress", appointment.getHospital() != null ? appointment.getHospital().getAddress() : "Central OPD Wing");
+            context.setVariable("hospitalPhone", appointment.getHospital() != null ? appointment.getHospital().getPhone() : "+1 800-555-0199");
+            context.setVariable("brandColor", appointment.getHospital() != null && appointment.getHospital().getBrandColor() != null ? appointment.getHospital().getBrandColor() : "#0284c7");
+            context.setVariable("doctorName", appointment.getDoctor() != null ? appointment.getDoctor().getName() : "Duty Physician");
+            context.setVariable("department", appointment.getDoctor() != null ? appointment.getDoctor().getDepartment() : "General OPD");
+            context.setVariable("roomNumber", appointment.getDoctor() != null && appointment.getDoctor().getRoomNumber() != null ? appointment.getDoctor().getRoomNumber() : "101");
+            context.setVariable("patientName", appointment.getPatientName() != null ? appointment.getPatientName() : "Patient");
+            context.setVariable("patientPhone", appointment.getPatientPhone() != null ? appointment.getPatientPhone() : "+91 9876543210");
+            context.setVariable("appointmentDate", appointment.getAppointmentDate() != null ? appointment.getAppointmentDate().format(DateTimeFormatter.ofPattern("dd MMMM yyyy")) : "Today");
+            context.setVariable("timeSlot", appointment.getTimeSlot() != null ? appointment.getTimeSlot() : "11:00 AM");
+            context.setVariable("serialNumber", String.format("%02d", appointment.getSerialNumber()));
+            context.setVariable("qrCodeBase64", qrFile.toURI().toString());
+            context.setVariable("qrToken", token);
+            context.setVariable("fee", appointment.getDoctor() != null ? appointment.getDoctor().getConsultationFee() : 50.0);
+
+            // 4. Render HTML with Thymeleaf
+            String renderedHtml = templateEngine.process("appointment-slip", context);
 
             // 5. Build PDF with OpenHTMLtoPDF
+            String fileName = "Appointment_Token_" + appointment.getSerialNumber() + "_" + token + ".pdf";
+            File outputFile = slipsPath.resolve(fileName).toFile();
+
             try (FileOutputStream fos = new FileOutputStream(outputFile)) {
                 PdfRendererBuilder builder = new PdfRendererBuilder();
                 builder.useFastMode();
-                builder.withHtmlContent(renderedHtml, "/");
+                builder.withHtmlContent(renderedHtml, slipsPath.toUri().toString());
                 builder.toStream(fos);
                 builder.run();
             }

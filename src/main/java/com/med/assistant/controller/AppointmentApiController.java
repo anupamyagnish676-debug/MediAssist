@@ -15,9 +15,12 @@ import java.util.*;
 public class AppointmentApiController {
 
     private final AppointmentRepository appointmentRepository;
+    private final com.med.assistant.service.AppointmentSlipPdfService pdfService;
 
-    public AppointmentApiController(AppointmentRepository appointmentRepository) {
+    public AppointmentApiController(AppointmentRepository appointmentRepository,
+                                    com.med.assistant.service.AppointmentSlipPdfService pdfService) {
         this.appointmentRepository = appointmentRepository;
+        this.pdfService = pdfService;
     }
 
     /**
@@ -92,14 +95,22 @@ public class AppointmentApiController {
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> downloadPdf(@PathVariable Long id) {
         Optional<Appointment> opt = appointmentRepository.findById(id);
-        if (opt.isEmpty() || opt.get().getPdfFilePath() == null) {
+        if (opt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
+        Appointment appt = opt.get();
         try {
-            byte[] fileBytes = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(opt.get().getPdfFilePath()));
+            java.io.File file = appt.getPdfFilePath() != null ? new java.io.File(appt.getPdfFilePath()) : null;
+            if (file == null || !file.exists()) {
+                String generatedPath = pdfService.generatePdfSlip(appt);
+                appt.setPdfFilePath(generatedPath);
+                appointmentRepository.save(appt);
+                file = new java.io.File(generatedPath);
+            }
+            byte[] fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
             return ResponseEntity.ok()
                     .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/pdf")
-                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Appointment_Token_" + opt.get().getSerialNumber() + ".pdf\"")
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Appointment_Token_" + appt.getSerialNumber() + ".pdf\"")
                     .body(fileBytes);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
