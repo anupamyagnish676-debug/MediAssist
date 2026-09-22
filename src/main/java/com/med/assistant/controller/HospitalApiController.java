@@ -7,6 +7,8 @@ import com.med.assistant.repository.HospitalRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import javax.sql.DataSource;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,15 +19,47 @@ public class HospitalApiController {
 
     private final HospitalRepository hospitalRepository;
     private final DoctorRepository doctorRepository;
+    private final DataSource dataSource;
 
-    public HospitalApiController(HospitalRepository hospitalRepository, DoctorRepository doctorRepository) {
+    public HospitalApiController(HospitalRepository hospitalRepository,
+                                  DoctorRepository doctorRepository,
+                                  DataSource dataSource) {
         this.hospitalRepository = hospitalRepository;
         this.doctorRepository = doctorRepository;
+        this.dataSource = dataSource;
     }
 
     @GetMapping
-    public ResponseEntity<List<Hospital>> getAllHospitals() {
-        return ResponseEntity.ok(hospitalRepository.findByActiveTrue());
+    public ResponseEntity<?> getAllHospitals() {
+        try {
+            return ResponseEntity.ok(hospitalRepository.findByActiveTrue());
+        } catch (Throwable t) {
+            return ResponseEntity.status(500).body(Map.of(
+                    "status", "ERROR",
+                    "message", t.getMessage() != null ? t.getMessage() : "Unknown DB query error",
+                    "type", t.getClass().getName()
+            ));
+        }
+    }
+
+    @GetMapping("/diagnostic")
+    public ResponseEntity<Map<String, Object>> getDiagnostic() {
+        Map<String, Object> map = new HashMap<>();
+        try {
+            map.put("databaseProduct", dataSource.getConnection().getMetaData().getDatabaseProductName());
+            map.put("databaseUrl", dataSource.getConnection().getMetaData().getURL());
+            map.put("hospitalCount", hospitalRepository.count());
+            map.put("status", "HEALTHY");
+        } catch (Throwable t) {
+            map.put("status", "ERROR");
+            map.put("errorType", t.getClass().getName());
+            map.put("errorMessage", t.getMessage());
+            if (t.getCause() != null) {
+                map.put("causeType", t.getCause().getClass().getName());
+                map.put("causeMessage", t.getCause().getMessage());
+            }
+        }
+        return ResponseEntity.ok(map);
     }
 
     @GetMapping("/{hospitalId}/doctors")
