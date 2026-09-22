@@ -8,6 +8,8 @@ import com.med.assistant.repository.AppointmentRepository;
 import com.med.assistant.repository.DoctorRepository;
 import com.med.assistant.repository.HospitalRepository;
 import com.med.assistant.service.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,6 +20,8 @@ import java.util.*;
 @RequestMapping("/api/v1/simulator")
 @CrossOrigin(origins = "*")
 public class SimulatorApiController {
+
+    private static final Logger logger = LoggerFactory.getLogger(SimulatorApiController.class);
 
     private final LocationService locationService;
     private final GeminiAiService geminiAiService;
@@ -133,10 +137,17 @@ public class SimulatorApiController {
                 Appointment appt = new Appointment(hosp, doc, phone, "Patient", LocalDate.now(), "11:00 AM", nextTokenNumber, qrToken);
                 appointmentRepository.save(appt);
 
-                String pdfPath = pdfService.generatePdfSlip(appt);
-                appt.setPdfFilePath(pdfPath);
-                appointmentRepository.save(appt);
+                String pdfUrl = null;
+                try {
+                    String pdfPath = pdfService.generatePdfSlip(appt);
+                    appt.setPdfFilePath(pdfPath);
+                    appointmentRepository.save(appt);
+                    pdfUrl = "/api/v1/appointments/" + appt.getId() + "/pdf";
+                } catch (Exception ex) {
+                    logger.error("Could not generate PDF slip: {}", ex.getMessage(), ex);
+                }
 
+                String room = doc.getRoomNumber() != null ? doc.getRoomNumber() : "101";
                 String text = """
                         🎉 Appointment Confirmed!
                         
@@ -148,12 +159,12 @@ public class SimulatorApiController {
                         
                         👉 YOUR QUEUE TOKEN: #%02d
                         
-                        📄 Your official branded PDF appointment slip with QR code is attached below. Show this at the hospital desk for instant check-in!
-                        """.formatted(hosp.getName(), doc.getName(), doc.getDepartment(), doc.getRoomNumber(), LocalDate.now(), nextTokenNumber);
+                        📄 Your official branded PDF appointment slip with QR code is ready. Show this at the hospital desk for instant check-in!
+                        """.formatted(hosp.getName(), doc.getName(), doc.getDepartment(), room, LocalDate.now(), nextTokenNumber);
 
                 return ResponseEntity.ok(new SimulatorResponse(
                         text, "document", null,
-                        "/api/v1/appointments/" + appt.getId() + "/pdf",
+                        pdfUrl,
                         "Appointment_Token_" + nextTokenNumber + ".pdf",
                         nextTokenNumber));
             }

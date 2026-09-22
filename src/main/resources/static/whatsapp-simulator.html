@@ -385,38 +385,46 @@
         async function selectAction(actionId, title) {
             appendMessage(`👉 Selected: ${title}`, true);
 
-            const reply = await sendToBackend({
-                patientPhone: "+919876543210",
-                messageType: "action",
-                actionId: actionId
-            });
-
-            let html = reply.replyText + "<br>";
-
-            if (reply.interactiveOptions) {
-                reply.interactiveOptions.forEach(opt => {
-                    html += `
-                        <div class="interactive-card" onclick="selectAction('${opt.id}', '${opt.title}')">
-                            👨‍⚕️ <strong>${opt.title}</strong>
-                        </div>
-                    `;
+            try {
+                const reply = await sendToBackend({
+                    patientPhone: "+919876543210",
+                    messageType: "action",
+                    actionId: actionId
                 });
-            }
 
-            if (reply.documentUrl) {
-                html += `
-                    <div class="pdf-download-card">
-                        <span style="font-size: 2rem;">📄</span>
-                        <div style="flex:1;">
-                            <div style="font-weight: bold; font-size: 0.85rem;">Official Appointment Slip (#${reply.tokenNumber})</div>
-                            <div style="font-size: 0.75rem; color: #166534;">Generated with QR Code</div>
-                        </div>
-                        <a href="${reply.documentUrl}" target="_blank" class="pdf-download-btn">Open PDF</a>
-                    </div>
-                `;
-            }
+                if (reply && reply.replyText) {
+                    let html = reply.replyText + "<br>";
 
-            appendMessage(html, false);
+                    if (reply.interactiveOptions) {
+                        reply.interactiveOptions.forEach(opt => {
+                            html += `
+                                <div class="interactive-card" onclick="selectAction('${opt.id}', '${opt.title}')">
+                                    👨‍⚕️ <strong>${opt.title}</strong>
+                                </div>
+                            `;
+                        });
+                    }
+
+                    if (reply.documentUrl) {
+                        html += `
+                            <div class="pdf-download-card">
+                                <span style="font-size: 2rem;">📄</span>
+                                <div style="flex:1;">
+                                    <div style="font-weight: bold; font-size: 0.85rem;">Official Appointment Slip (#${reply.tokenNumber || '01'})</div>
+                                    <div style="font-size: 0.75rem; color: #166534;">Generated with QR Code</div>
+                                </div>
+                                <a href="${reply.documentUrl}" target="_blank" class="pdf-download-btn">Open PDF</a>
+                            </div>
+                        `;
+                    }
+
+                    appendMessage(html, false);
+                } else {
+                    appendMessage("❌ Could not process booking. Please try again.", false);
+                }
+            } catch (err) {
+                appendMessage("❌ Network error connecting to hospital booking desk.", false);
+            }
         }
 
         function simulateMedicationAlert() {

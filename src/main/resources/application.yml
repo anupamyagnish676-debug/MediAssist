@@ -69,4 +69,4 @@ app:
       api-key: ${GEMINI_API_KEY}
       model: gemini-1.5-flash
   storage:
-    upload-dir: ${STORAGE_UPLOAD_DIR:/var/medbot/uploads}
+    upload-dir: ${STORAGE_UPLOAD_DIR:./uploads}

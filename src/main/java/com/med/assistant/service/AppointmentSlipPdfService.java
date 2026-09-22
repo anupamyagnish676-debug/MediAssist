@@ -63,9 +63,15 @@ public class AppointmentSlipPdfService {
             // 3. Render HTML
             String renderedHtml = templateEngine.process("appointment-slip", context);
 
-            // 4. Ensure directories exist
-            Path slipsPath = Paths.get(uploadDir, "slips");
-            Files.createDirectories(slipsPath);
+            // 4. Ensure directories exist safely
+            Path slipsPath;
+            try {
+                slipsPath = Paths.get(uploadDir, "slips");
+                Files.createDirectories(slipsPath);
+            } catch (Exception ex) {
+                slipsPath = Paths.get(System.getProperty("java.io.tmpdir"), "medbot", "slips");
+                Files.createDirectories(slipsPath);
+            }
 
             String fileName = "Appointment_Token_" + appointment.getSerialNumber() + "_" + appointment.getQrCodeToken() + ".pdf";
             File outputFile = slipsPath.resolve(fileName).toFile();
