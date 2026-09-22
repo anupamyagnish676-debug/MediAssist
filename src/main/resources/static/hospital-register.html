@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital & Clinic Onboarding | MedAssist</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .form-group.full-width {
+            grid-column: span 2;
+        }
+        .form-group label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+        .form-group input, .form-group select {
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .geo-btn {
+            background: #e0f2fe;
+            color: #0369a1;
+            border: 1px solid #bae6fd;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            margin-top: 0.25rem;
+            width: fit-content;
+        }
+        .doctor-card {
+            background: var(--gray-50);
+            border: 1px solid var(--gray-200);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+        .doctor-grid {
+            display: grid;
+            grid-template-columns: 2fr 2fr 1fr 1fr 1fr;
+            gap: 1rem;
+        }
+        .btn-add-doc {
+            background: transparent;
+            border: 2px dashed var(--gray-400);
+            color: var(--gray-600);
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 2rem;
+        }
+        .btn-add-doc:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: #f0f9ff;
+        }
+        .remove-doc-btn {
+            color: #dc2626;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-top: 0.5rem;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/index.html" class="navbar-brand">
+            🏥 <span>MedAssist Hospital Operations</span>
+        </a>
+        <ul class="navbar-links">
+            <li><a href="/index.html">Overview</a></li>
+            <li><a href="/hospital-register.html" class="active">Register Hospital</a></li>
+            <li><a href="/doctor-roster.html">Doctor Roster</a></li>
+            <li><a href="/receptionist.html">Receptionist QR Check-In</a></li>
+            <li><a href="/token-display.html" target="_blank">TV Waiting Screen ↗</a></li>
+        </ul>
+    </nav>
+
+    <div class="container" style="max-width: 900px;">
+        <div class="page-header">
+            <h1>Hospital & Clinic Registration</h1>
+            <p>Register a new hospital or clinic to list your available doctors on WhatsApp for nearby patients.</p>
+        </div>
+
+        <form id="hospital-form" onsubmit="handleRegistration(event)">
+            <!-- 1. Hospital Profile -->
+            <div class="card">
+                <div class="card-title">1. Hospital Profile & Location</div>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label>Hospital or Clinic Name *</label>
+                        <input type="text" id="hospital-name" placeholder="e.g. Fortis Care Multispeciality" required />
+                    </div>
+                    <div class="form-group full-width">
+                        <label>Full Physical Address *</label>
+                        <input type="text" id="hospital-address" placeholder="e.g. 12 Ring Road, Near Metro Station" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Latitude *</label>
+                        <input type="number" step="any" id="hospital-lat" placeholder="e.g. 28.6139" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Longitude *</label>
+                        <input type="number" step="any" id="hospital-lon" placeholder="e.g. 77.2090" required />
+                    </div>
+                    <div class="form-group full-width">
+                        <button type="button" class="geo-btn" onclick="detectLocation()">
+                            📍 Auto-Detect My Current GPS Location
+                        </button>
+                    </div>
+                    <div class="form-group">
+                        <label>Helpline Phone Number *</label>
+                        <input type="tel" id="hospital-phone" placeholder="e.g. +91 98765 43210" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Brand Theme Color</label>
+                        <input type="color" id="hospital-color" value="#0284c7" style="height: 48px; padding: 4px;" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Onboard Doctors -->
+            <div class="card">
+                <div class="card-title">2. Onboard Doctors & OPD Rooms</div>
+                <p style="font-size: 0.9rem; color: var(--gray-600); margin-bottom: 1rem;">
+                    Add the doctors who will be accepting patient queue tokens on WhatsApp:
+                </p>
+
+                <div id="doctors-container">
+                    <!-- Default Doctor 1 -->
+                    <div class="doctor-card">
+                        <div class="doctor-grid">
+                            <div class="form-group">
+                                <label>Doctor Name *</label>
+                                <input type="text" class="doc-name" placeholder="Dr. John Doe" required />
+                            </div>
+                            <div class="form-group">
+                                <label>Department *</label>
+                                <select class="doc-dept">
+                                    <option value="General Medicine">General Medicine</option>
+                                    <option value="Cardiology">Cardiology</option>
+                                    <option value="Pediatrics">Pediatrics</option>
+                                    <option value="Orthopedics">Orthopedics</option>
+                                    <option value="Dermatology">Dermatology</option>
+                                    <option value="ENT">ENT</option>
+                                    <option value="Gynecology">Gynecology</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Room #</label>
+                                <input type="text" class="doc-room" placeholder="101" value="101" />
+                            </div>
+                            <div class="form-group">
+                                <label>Fee ($/₹)</label>
+                                <input type="number" class="doc-fee" placeholder="500" value="500" />
+                            </div>
+                            <div class="form-group">
+                                <label>Max Tokens</label>
+                                <input type="number" class="doc-tokens" placeholder="25" value="25" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button" class="btn-add-doc" onclick="addDoctorRow()">
+                    + Add Another Doctor
+                </button>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; padding: 1rem; font-size: 1.1rem;" id="submit-btn">
+                    🚀 Complete Registration & Join WhatsApp Network
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        function detectLocation() {
+            if ("geolocation" in navigator) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    document.getElementById('hospital-lat').value = position.coords.latitude.toFixed(6);
+                    document.getElementById('hospital-lon').value = position.coords.longitude.toFixed(6);
+                    alert("📍 Coordinates successfully detected!");
+                }, error => {
+                    alert("Could not detect location. Please enter latitude & longitude manually.");
+                });
+            } else {
+                alert("Geolocation not supported by your browser.");
+            }
+        }
+
+        function addDoctorRow() {
+            const container = document.getElementById('doctors-container');
+            const newDoc = document.createElement('div');
+            newDoc.className = 'doctor-card';
+            newDoc.innerHTML = `
+                <div class="doctor-grid">
+                    <div class="form-group">
+                        <label>Doctor Name *</label>
+                        <input type="text" class="doc-name" placeholder="Dr. Full Name" required />
+                    </div>
+                    <div class="form-group">
+                        <label>Department *</label>
+                        <select class="doc-dept">
+                            <option value="General Medicine">General Medicine</option>
+                            <option value="Cardiology">Cardiology</option>
+                            <option value="Pediatrics">Pediatrics</option>
+                            <option value="Orthopedics">Orthopedics</option>
+                            <option value="Dermatology">Dermatology</option>
+                            <option value="ENT">ENT</option>
+                            <option value="Gynecology">Gynecology</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Room #</label>
+                        <input type="text" class="doc-room" placeholder="102" value="102" />
+                    </div>
+                    <div class="form-group">
+                        <label>Fee ($/₹)</label>
+                        <input type="number" class="doc-fee" placeholder="500" value="500" />
+                    </div>
+                    <div class="form-group">
+                        <label>Max Tokens</label>
+                        <input type="number" class="doc-tokens" placeholder="25" value="25" />
+                    </div>
+                </div>
+                <span class="remove-doc-btn" onclick="this.parentElement.remove()">✕ Remove Doctor</span>
+            `;
+            container.appendChild(newDoc);
+        }
+
+        async function handleRegistration(e) {
+            e.preventDefault();
+            const btn = document.getElementById('submit-btn');
+            btn.disabled = true;
+            btn.innerText = "Registering Hospital...";
+
+            const docCards = document.querySelectorAll('.doctor-card');
+            const doctors = [];
+            docCards.forEach(card => {
+                doctors.push({
+                    name: card.querySelector('.doc-name').value,
+                    department: card.querySelector('.doc-dept').value,
+                    roomNumber: card.querySelector('.doc-room').value,
+                    consultationFee: parseFloat(card.querySelector('.doc-fee').value) || 0,
+                    dailyTokenLimit: parseInt(card.querySelector('.doc-tokens').value, 10) || 25
+                });
+            });
+
+            const payload = {
+                name: document.getElementById('hospital-name').value,
+                address: document.getElementById('hospital-address').value,
+                latitude: parseFloat(document.getElementById('hospital-lat').value),
+                longitude: parseFloat(document.getElementById('hospital-lon').value),
+                phone: document.getElementById('hospital-phone').value,
+                brandColor: document.getElementById('hospital-color').value,
+                doctors: doctors
+            };
+
+            try {
+                const res = await fetch('/api/v1/hospitals/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    alert("🎉 Hospital and doctors registered successfully! Redirecting to Overview...");
+                    window.location.href = '/index.html';
+                } else {
+                    alert("❌ Registration failed. Please check your inputs.");
+                    btn.disabled = false;
+                    btn.innerText = "Register Hospital";
+                }
+            } catch (err) {
+                alert("❌ Network error connecting to registration API.");
+                btn.disabled = false;
+                btn.innerText = "Register Hospital";
+            }
+        }
+    </script>
+</body>
+</html>
