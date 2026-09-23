@@ -176,6 +176,19 @@ public class SuperAdminApiController {
     }
 
     /**
+     * Test sending email to verify SMTP delivery.
+     */
+    @PostMapping("/test-email")
+    public ResponseEntity<?> testEmail(@RequestParam(defaultValue = "anupamyagnish676@gmail.com") String to) {
+        try {
+            emailService.sendCredentials(to, "Test Hospital", "Test Administrator", "Demo@12345");
+            return ResponseEntity.ok(Map.of("success", true, "message", "Test email dispatched to " + to));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
+    /**
      * Reject an application with a reason.
      */
     @PostMapping("/applications/{id}/reject")
