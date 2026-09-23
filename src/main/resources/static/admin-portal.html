@@ -249,11 +249,12 @@
             }
         }
 
-        function showToast(msg) {
+        function showToast(msg, type = 'success') {
             const toast = document.getElementById('toast');
             toast.textContent = msg;
+            toast.style.backgroundColor = type === 'error' ? '#ef4444' : '#10b981';
             toast.classList.add('show');
-            setTimeout(() => toast.classList.remove('show'), 3000);
+            setTimeout(() => toast.classList.remove('show'), 3500);
         }
 
         // Navigation
@@ -378,8 +379,18 @@
             if(!confirm('Approve this application?')) return;
             try {
                 const res = await fetch(`/api/v1/admin/applications/${id}/approve`, { method: 'POST' });
-                if(res.ok) { showToast('Approved successfully'); loadApplications(); }
-            } catch(e) { console.error(e); }
+                const data = await res.json().catch(() => ({}));
+                if(res.ok) {
+                    showToast(data.message || 'Hospital approved successfully!');
+                    loadApplications();
+                    loadDashboardData();
+                } else {
+                    showToast(data.message || 'Approval failed. Please try again.', 'error');
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('Network error while approving application.', 'error');
+            }
         }
 
         async function rejectApp(id) {
@@ -391,8 +402,18 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ reason })
                 });
-                if(res.ok) { showToast('Rejected successfully'); loadApplications(); }
-            } catch(e) { console.error(e); }
+                const data = await res.json().catch(() => ({}));
+                if(res.ok) {
+                    showToast(data.message || 'Application rejected.');
+                    loadApplications();
+                    loadDashboardData();
+                } else {
+                    showToast(data.message || 'Rejection failed.', 'error');
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('Network error while rejecting application.', 'error');
+            }
         }
 
         function openManagerModal(hospitalId) {

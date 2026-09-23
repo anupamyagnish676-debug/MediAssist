@@ -120,27 +120,41 @@ public class SuperAdminApiController {
             return ResponseEntity.badRequest().body(Map.of("message", "No contact email found on this application."));
         }
 
-        if (userRepository.findByEmailIgnoreCase(email).isPresent()) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", "Email already in use: " + email));
-        }
-
         // Update hospital status
         hospital.setStatus(Hospital.Status.ACTIVE);
         hospital.setActive(true);
         hospital.setReviewedAt(LocalDateTime.now());
         hospitalRepository.save(hospital);
 
-        // Create user
-        User manager = new User(
-            email,
-            passwordEncoder.encode(tempPassword),
-            hospital.getContactPersonName() != null ? hospital.getContactPersonName() : "Hospital Admin",
-            User.Role.HOSPITAL_MANAGER,
-            hospital
-        );
-        manager.setPhoneNumber(hospital.getContactPersonPhone());
-        manager.setMustChangePassword(true);
-        userRepository.save(manager);
+        // Create or update hospital manager user account
+        Optional<User> existingUserOpt = userRepository.findByEmailIgnoreCase(email);
+        User manager;
+        if (existingUserOpt.isPresent()) {
+            manager = existingUserOpt.get();
+            manager.setHospital(hospital);
+            manager.setPassword(passwordEncoder.encode(tempPassword));
+            manager.setMustChangePassword(true);
+            if (hospital.getContactPersonName() != null && !hospital.getContactPersonName().isBlank()) {
+                manager.setFullName(hospital.getContactPersonName());
+            }
+            if (hospital.getContactPersonPhone() != null && !hospital.getContactPersonPhone().isBlank()) {
+                manager.setPhoneNumber(hospital.getContactPersonPhone());
+            }
+            userRepository.save(manager);
+            logger.info("Updated existing manager '{}' for hospital '{}'", email, hospital.getName());
+        } else {
+            manager = new User(
+                email,
+                passwordEncoder.encode(tempPassword),
+                hospital.getContactPersonName() != null && !hospital.getContactPersonName().isBlank() ? hospital.getContactPersonName() : "Hospital Admin",
+                User.Role.HOSPITAL_MANAGER,
+                hospital
+            );
+            manager.setPhoneNumber(hospital.getContactPersonPhone());
+            manager.setMustChangePassword(true);
+            userRepository.save(manager);
+            logger.info("Created new manager '{}' for hospital '{}'", email, hospital.getName());
+        }
 
         // Send credentials email
         try {
