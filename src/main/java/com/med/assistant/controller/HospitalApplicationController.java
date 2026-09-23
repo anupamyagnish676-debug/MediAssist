@@ -129,16 +129,23 @@ public class HospitalApplicationController {
         hospital.setActive(false);
         hospital.setAppliedAt(LocalDateTime.now());
 
-        hospitalRepository.save(hospital);
+        try {
+            hospitalRepository.save(hospital);
+            logger.info("New hospital application submitted: '{}' by {} ({})",
+                    hospital.getName(), hospital.getContactPersonName(), hospital.getContactPersonEmail());
 
-        logger.info("New hospital application submitted: '{}' by {} ({})",
-                hospital.getName(), hospital.getContactPersonName(), hospital.getContactPersonEmail());
-
-        return ResponseEntity.ok(Map.of(
-            "success", true,
-            "message", "Application submitted successfully! You will receive an email once reviewed.",
-            "referenceId", "HOSP-" + hospital.getId(),
-            "id", hospital.getId()
-        ));
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Application submitted successfully! You will receive an email once reviewed.",
+                "referenceId", "HOSP-" + hospital.getId(),
+                "id", hospital.getId()
+            ));
+        } catch (Exception e) {
+            logger.error("Failed to save hospital application: {}", e.getMessage(), e);
+            return ResponseEntity.status(500).body(Map.of(
+                "success", false,
+                "message", "Failed to save application: " + e.getMessage()
+            ));
+        }
     }
 }

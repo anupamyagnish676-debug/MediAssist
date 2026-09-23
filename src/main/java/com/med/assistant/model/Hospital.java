@@ -44,6 +44,7 @@ public class Hospital {
 
     public enum Status {
         PENDING_REVIEW,
+        PENDING_APPROVAL,
         APPROVED,
         ACTIVE,
         REJECTED,

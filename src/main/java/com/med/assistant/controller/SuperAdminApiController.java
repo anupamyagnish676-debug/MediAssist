@@ -84,12 +84,14 @@ public class SuperAdminApiController {
             result.add(map);
         }
 
-        // Sort: PENDING_REVIEW first, then by appliedAt desc
+        // Sort: PENDING_REVIEW or PENDING_APPROVAL first, then by appliedAt desc
         result.sort((a, b) -> {
             String statusA = (String) a.get("status");
             String statusB = (String) b.get("status");
-            if ("PENDING_REVIEW".equals(statusA) && !"PENDING_REVIEW".equals(statusB)) return -1;
-            if (!"PENDING_REVIEW".equals(statusA) && "PENDING_REVIEW".equals(statusB)) return 1;
+            boolean isPendingA = "PENDING_REVIEW".equals(statusA) || "PENDING_APPROVAL".equals(statusA);
+            boolean isPendingB = "PENDING_REVIEW".equals(statusB) || "PENDING_APPROVAL".equals(statusB);
+            if (isPendingA && !isPendingB) return -1;
+            if (!isPendingA && isPendingB) return 1;
             return 0;
         });
 
@@ -105,7 +107,7 @@ public class SuperAdminApiController {
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
 
         Hospital hospital = opt.get();
-        if (hospital.getStatus() != Hospital.Status.PENDING_REVIEW) {
+        if (hospital.getStatus() != Hospital.Status.PENDING_REVIEW && hospital.getStatus() != Hospital.Status.PENDING_APPROVAL) {
             return ResponseEntity.badRequest().body(Map.of("message", "This application has already been reviewed."));
         }
 
@@ -168,7 +170,7 @@ public class SuperAdminApiController {
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
 
         Hospital hospital = opt.get();
-        if (hospital.getStatus() != Hospital.Status.PENDING_REVIEW) {
+        if (hospital.getStatus() != Hospital.Status.PENDING_REVIEW && hospital.getStatus() != Hospital.Status.PENDING_APPROVAL) {
             return ResponseEntity.badRequest().body(Map.of("message", "This application has already been reviewed."));
         }
 
@@ -315,7 +317,7 @@ public class SuperAdminApiController {
         List<Hospital> all = hospitalRepository.findAll();
         long totalHospitals = all.size();
         long activeHospitals = all.stream().filter(h -> h.getStatus() == Hospital.Status.ACTIVE).count();
-        long pendingApplications = all.stream().filter(h -> h.getStatus() == Hospital.Status.PENDING_REVIEW).count();
+        long pendingApplications = all.stream().filter(h -> h.getStatus() == Hospital.Status.PENDING_REVIEW || h.getStatus() == Hospital.Status.PENDING_APPROVAL).count();
         long totalDoctors = doctorRepository.count();
         long totalAppointments = appointmentRepository.count();
         long totalManagers = userRepository.findByRole(User.Role.HOSPITAL_MANAGER).size();
