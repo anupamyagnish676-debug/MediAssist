@@ -193,24 +193,21 @@
 
                 if (response.ok) {
                     const data = await response.json().catch(() => ({}));
-                    const refId = data.id || Math.floor(Math.random() * 100000);
+                    const refId = data.referenceId || ('HOSP-' + (data.id || Math.floor(Math.random() * 100000)));
                     document.getElementById('application-form-card').style.display = 'none';
-                    document.getElementById('reference-id').innerText = `#HOSP-${refId}`;
+                    document.getElementById('reference-id').innerText = refId.startsWith('#') ? refId : ('#' + refId);
                     document.getElementById('success-card').style.display = 'block';
                 } else {
-                    showToast('Application submission failed. Please try again.', 'error');
+                    const errData = await response.json().catch(() => ({}));
+                    showToast(errData.message || 'Application submission failed. Please try again.', 'error');
                     submitBtn.disabled = false;
                     submitBtn.innerText = 'Submit Application';
                 }
             } catch (error) {
                 console.error(error);
-                // For demonstration, simulating success if API is not running
-                setTimeout(() => {
-                    const refId = Math.floor(Math.random() * 100000);
-                    document.getElementById('application-form-card').style.display = 'none';
-                    document.getElementById('reference-id').innerText = `#HOSP-${refId}`;
-                    document.getElementById('success-card').style.display = 'block';
-                }, 1000);
+                showToast('Network error occurred. Please check your connection.', 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerText = 'Submit Application';
             }
         });
     </script>

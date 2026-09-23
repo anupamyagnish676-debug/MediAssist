@@ -10,6 +10,8 @@ import org.springframework.context.annotation.Primary;
 
 import javax.sql.DataSource;
 import java.net.URI;
+import java.sql.Connection;
+import java.sql.Statement;
 
 @Configuration
 public class DatabaseConfig {
@@ -19,6 +21,12 @@ public class DatabaseConfig {
     @Bean
     @Primary
     public DataSource dataSource() {
+        DataSource ds = createDataSource();
+        migrateSchema(ds);
+        return ds;
+    }
+
+    private DataSource createDataSource() {
         String dbUrl = System.getenv("DATABASE_URL");
         if (dbUrl == null || dbUrl.isBlank()) {
             dbUrl = System.getenv("SPRING_DATASOURCE_URL");
@@ -92,5 +100,37 @@ public class DatabaseConfig {
         config.setUsername("sa");
         config.setPassword("");
         return new HikariDataSource(config);
+    }
+
+    private void migrateSchema(DataSource ds) {
+        try (Connection conn = ds.getConnection(); Statement stmt = conn.createStatement()) {
+            String product = conn.getMetaData().getDatabaseProductName().toLowerCase();
+            if (product.contains("postgres")) {
+                logger.info("Executing idempotent schema migrations for PostgreSQL...");
+                // Hospitals table columns
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS registration_number VARCHAR(255);");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_name VARCHAR(255);");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_email VARCHAR(255);");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_phone VARCHAR(255);");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS specialties VARCHAR(1000);");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS number_of_beds INTEGER DEFAULT 0;");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS application_note TEXT;");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS city VARCHAR(255);");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS state VARCHAR(255);");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS applied_at TIMESTAMP;");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS rejection_reason TEXT;");
+                stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE';");
+
+                // Users table columns
+                stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(255);");
+                stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;");
+                stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;");
+                stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;");
+                logger.info("PostgreSQL schema migrations executed successfully!");
+            }
+        } catch (Exception e) {
+            logger.warn("Schema migration notice (non-fatal): {}", e.getMessage());
+        }
     }
 }
