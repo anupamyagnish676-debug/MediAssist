@@ -1,6 +1,7 @@
 package com.med.assistant.model;
 
 import jakarta.persistence.*;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,15 +21,32 @@ public class Hospital {
     private double longitude;
     private String phone;
     private String logoUrl;
-    private String brandColor = "#0284c7"; // Default medical blue
+    private String brandColor = "#0284c7";
     private boolean active = true;
+
+    // Application fields
+    private String registrationNumber;
+    private String contactPersonName;
+    private String contactPersonEmail;
+    private String contactPersonPhone;
+    private String specialties; // comma-separated
+    private int numberOfBeds;
+    private String applicationNote;
+    private String city;
+    private String state;
+
+    private LocalDateTime appliedAt;
+    private LocalDateTime reviewedAt;
+    private String rejectionReason;
 
     @Enumerated(EnumType.STRING)
     private Status status = Status.ACTIVE;
 
     public enum Status {
-        PENDING_APPROVAL,
+        PENDING_REVIEW,
+        APPROVED,
         ACTIVE,
+        REJECTED,
         SUSPENDED
     }
 
@@ -80,4 +98,40 @@ public class Hospital {
 
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }
+
+    public String getRegistrationNumber() { return registrationNumber; }
+    public void setRegistrationNumber(String registrationNumber) { this.registrationNumber = registrationNumber; }
+
+    public String getContactPersonName() { return contactPersonName; }
+    public void setContactPersonName(String contactPersonName) { this.contactPersonName = contactPersonName; }
+
+    public String getContactPersonEmail() { return contactPersonEmail; }
+    public void setContactPersonEmail(String contactPersonEmail) { this.contactPersonEmail = contactPersonEmail; }
+
+    public String getContactPersonPhone() { return contactPersonPhone; }
+    public void setContactPersonPhone(String contactPersonPhone) { this.contactPersonPhone = contactPersonPhone; }
+
+    public String getSpecialties() { return specialties; }
+    public void setSpecialties(String specialties) { this.specialties = specialties; }
+
+    public int getNumberOfBeds() { return numberOfBeds; }
+    public void setNumberOfBeds(int numberOfBeds) { this.numberOfBeds = numberOfBeds; }
+
+    public String getApplicationNote() { return applicationNote; }
+    public void setApplicationNote(String applicationNote) { this.applicationNote = applicationNote; }
+
+    public String getCity() { return city; }
+    public void setCity(String city) { this.city = city; }
+
+    public String getState() { return state; }
+    public void setState(String state) { this.state = state; }
+
+    public LocalDateTime getAppliedAt() { return appliedAt; }
+    public void setAppliedAt(LocalDateTime appliedAt) { this.appliedAt = appliedAt; }
+
+    public LocalDateTime getReviewedAt() { return reviewedAt; }
+    public void setReviewedAt(LocalDateTime reviewedAt) { this.reviewedAt = reviewedAt; }
+
+    public String getRejectionReason() { return rejectionReason; }
+    public void setRejectionReason(String rejectionReason) { this.rejectionReason = rejectionReason; }
 }

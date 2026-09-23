@@ -56,6 +56,7 @@ public class HospitalManagerApiController {
 
     public record AddDoctorRequest(String name, String department, String roomNumber, double consultationFee, int dailyTokenLimit) {}
     public record UpdateScheduleRequest(String roomNumber, double consultationFee, int dailyTokenLimit) {}
+    public record UpdateHospitalSettingsRequest(String name, String address, String phone, String brandColor) {}
 
     /**
      * Get details of the hospital assigned to this manager.
@@ -63,6 +64,20 @@ public class HospitalManagerApiController {
     @GetMapping("/my-hospital")
     public ResponseEntity<Hospital> getMyHospital() {
         return ResponseEntity.ok(getManagerHospital());
+    }
+
+    /**
+     * Update hospital settings (name, address, phone, brandColor).
+     */
+    @PutMapping("/settings")
+    public ResponseEntity<?> updateSettings(@RequestBody UpdateHospitalSettingsRequest req) {
+        Hospital h = getManagerHospital();
+        if (req.name() != null && !req.name().isBlank()) h.setName(req.name().trim());
+        if (req.address() != null) h.setAddress(req.address().trim());
+        if (req.phone() != null) h.setPhone(req.phone().trim());
+        if (req.brandColor() != null && !req.brandColor().isBlank()) h.setBrandColor(req.brandColor().trim());
+        hospitalRepository.save(h);
+        return ResponseEntity.ok(Map.of("success", true, "hospital", h));
     }
 
     /**
@@ -87,6 +102,24 @@ public class HospitalManagerApiController {
     }
 
     /**
+     * Delete a doctor belonging to this hospital.
+     */
+    @DeleteMapping("/doctors/{doctorId}")
+    public ResponseEntity<?> deleteDoctor(@PathVariable Long doctorId) {
+        Hospital h = getManagerHospital();
+        Optional<Doctor> opt = doctorRepository.findById(doctorId);
+        if (opt.isEmpty()) return ResponseEntity.notFound().build();
+
+        Doctor doc = opt.get();
+        if (!doc.getHospital().getId().equals(h.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Access denied: Doctor does not belong to your hospital."));
+        }
+
+        doctorRepository.delete(doc);
+        return ResponseEntity.ok(Map.of("success", true, "message", "Doctor deleted successfully."));
+    }
+
+    /**
      * Toggle doctor availability (Available Today / On Leave) with strict hospital ownership check.
      */
     @PostMapping("/doctors/{doctorId}/availability")
@@ -105,7 +138,8 @@ public class HospitalManagerApiController {
         return ResponseEntity.ok(Map.of(
                 "doctorId", doc.getId(),
                 "name", doc.getName(),
-                "availableToday", doc.isAvailableToday()
+                "availableToday", doc.isAvailableToday(),
+                "available", doc.isAvailableToday()
         ));
     }
 
@@ -130,11 +164,31 @@ public class HospitalManagerApiController {
     }
 
     /**
-     * View today's appointments for this hospital.
+     * View today's appointments for this hospital with all fields mapped for frontend convenience.
      */
     @GetMapping("/today-appointments")
-    public ResponseEntity<List<Appointment>> getTodayAppointments() {
+    public ResponseEntity<List<Map<String, Object>>> getTodayAppointments() {
         Hospital h = getManagerHospital();
-        return ResponseEntity.ok(appointmentRepository.findByHospitalIdAndAppointmentDate(h.getId(), LocalDate.now()));
+        List<Appointment> list = appointmentRepository.findByHospitalIdAndAppointmentDate(h.getId(), LocalDate.now());
+        List<Map<String, Object>> result = new ArrayList<>();
+
+        for (Appointment a : list) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("id", a.getId());
+            map.put("tokenNumber", a.getSerialNumber());
+            map.put("serialNumber", a.getSerialNumber());
+            map.put("patientPhone", a.getPatientPhone());
+            map.put("patientName", a.getPatientName());
+            map.put("doctorName", a.getDoctor() != null ? a.getDoctor().getName() : "N/A");
+            map.put("department", a.getDoctor() != null ? a.getDoctor().getDepartment() : "General");
+            map.put("timeSlot", a.getTimeSlot());
+            map.put("appointmentTime", a.getTimeSlot());
+            map.put("status", a.getStatus().name());
+            map.put("qrToken", a.getQrCodeToken());
+            map.put("qrCodeToken", a.getQrCodeToken());
+            result.add(map);
+        }
+
+        return ResponseEntity.ok(result);
     }
 }

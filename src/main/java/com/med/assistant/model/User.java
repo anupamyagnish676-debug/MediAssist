@@ -20,6 +20,7 @@ public class User {
     private String password;
 
     private String fullName;
+    private String phoneNumber;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -27,9 +28,11 @@ public class User {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "hospital_id")
-    private Hospital hospital; // Null for SUPER_ADMIN, points to assigned hospital for HOSPITAL_MANAGER
+    private Hospital hospital;
 
     private boolean active = true;
+    private boolean mustChangePassword = false;
+    private LocalDateTime lastLoginAt;
     private LocalDateTime createdAt = LocalDateTime.now();
 
     public enum Role {
@@ -61,6 +64,9 @@ public class User {
     public String getFullName() { return fullName; }
     public void setFullName(String fullName) { this.fullName = fullName; }
 
+    public String getPhoneNumber() { return phoneNumber; }
+    public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }
+
     public Role getRole() { return role; }
     public void setRole(Role role) { this.role = role; }
 
@@ -69,6 +75,12 @@ public class User {
 
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
+
+    public boolean isMustChangePassword() { return mustChangePassword; }
+    public void setMustChangePassword(boolean mustChangePassword) { this.mustChangePassword = mustChangePassword; }
+
+    public LocalDateTime getLastLoginAt() { return lastLoginAt; }
+    public void setLastLoginAt(LocalDateTime lastLoginAt) { this.lastLoginAt = lastLoginAt; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

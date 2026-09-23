@@ -35,6 +35,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // Public Authentication Endpoints
                 .requestMatchers("/api/v1/auth/**").permitAll()
+                .requestMatchers("/api/v1/apply/**").permitAll()
 
                 // Public WhatsApp & Patient Simulator Endpoints
                 .requestMatchers("/api/v1/whatsapp/**").permitAll()

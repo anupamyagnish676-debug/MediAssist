@@ -3,275 +3,431 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Company Platform Super Admin | MediAssist</title>
+    <title>Super Admin Portal - MediAssist</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
     <style>
-        .role-badge {
-            background: #fef3c7;
-            color: #92400e;
-            padding: 4px 10px;
-            border-radius: 9999px;
-            font-size: 0.8rem;
-            font-weight: bold;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.5);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-        }
-        .modal {
-            background: #ffffff;
-            border-radius: 12px;
-            padding: 2rem;
-            max-width: 450px;
-            width: 100%;
-            box-shadow: var(--shadow-lg);
-        }
+        body { margin: 0; font-family: 'Inter', sans-serif; display: flex; min-height: 100vh; background-color: #f3f4f6; }
+        
+        /* Sidebar */
+        .sidebar { width: 260px; background-color: #111827; color: white; display: flex; flex-direction: column; }
+        .sidebar-brand { padding: 1.5rem; font-size: 1.5rem; font-weight: 700; border-bottom: 1px solid #374151; color: #60a5fa; }
+        .sidebar-nav { flex: 1; padding: 1rem 0; }
+        .nav-item { padding: 0.75rem 1.5rem; display: block; color: #d1d5db; text-decoration: none; font-weight: 500; transition: background-color 0.2s, color 0.2s; cursor: pointer; }
+        .nav-item:hover, .nav-item.active { background-color: #1f2937; color: white; border-left: 4px solid #0066FF; }
+        .sidebar-footer { padding: 1.5rem; border-top: 1px solid #374151; }
+        .user-email { font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.75rem; word-break: break-all; }
+        .btn-logout { width: 100%; padding: 0.5rem; background-color: #374151; color: white; border: none; border-radius: 0.375rem; cursor: pointer; }
+        .btn-logout:hover { background-color: #4b5563; }
+
+        /* Main Content */
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar { background-color: white; padding: 1.5rem 2rem; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+        .page-title { font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0; }
+        .content-area { padding: 2rem; overflow-y: auto; flex: 1; }
+        
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        
+        /* Cards */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .stat-card { background: white; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-card h3 { margin: 0; font-size: 0.875rem; color: #6b7280; font-weight: 500; }
+        .stat-card .value { font-size: 1.875rem; font-weight: 700; color: #111827; margin-top: 0.5rem; }
+
+        /* Tables */
+        .card { background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; margin-bottom: 1.5rem; }
+        .card-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+        .card-header h2 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 0.75rem 1.5rem; background-color: #f9fafb; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+        td { padding: 1rem 1.5rem; font-size: 0.875rem; border-bottom: 1px solid #e5e7eb; color: #374151; }
+        tr:last-child td { border-bottom: none; }
+        
+        /* Buttons & Badges */
+        .badge { padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+        .badge-pending { background-color: #fef3c7; color: #92400e; }
+        .badge-approved, .badge-active { background-color: #d1fae5; color: #065f46; }
+        .badge-rejected { background-color: #fee2e2; color: #991b1b; }
+        
+        .btn { padding: 0.375rem 0.75rem; border: none; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background-color 0.2s; }
+        .btn-green { background-color: #10b981; color: white; }
+        .btn-green:hover { background-color: #059669; }
+        .btn-red { background-color: #ef4444; color: white; }
+        .btn-red:hover { background-color: #dc2626; }
+        .btn-blue { background-color: #0066FF; color: white; }
+        .btn-blue:hover { background-color: #0052CC; }
+
+        .flex-actions { display: flex; gap: 0.5rem; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 50; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; padding: 2rem; border-radius: 0.5rem; width: 100%; max-width: 400px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .modal-header h2 { margin: 0; font-size: 1.25rem; }
+        .close-btn { background: none; border: none; font-size: 1.5rem; cursor: pointer; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; font-size: 0.875rem; margin-bottom: 0.25rem; font-weight: 500; }
+        .form-group input { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; box-sizing: border-box; }
+        .modal-footer { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+        .toast { position: fixed; bottom: 20px; right: 20px; background-color: #10b981; color: white; padding: 1rem; border-radius: 0.375rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); opacity: 0; transition: opacity 0.3s; z-index: 100; pointer-events: none; }
+        .toast.show { opacity: 1; }
     </style>
 </head>
 <body>
-
-    <nav class="navbar">
-        <a href="/admin-portal.html" class="navbar-brand">
-            👑 <span>MediAssist Platform Super Admin</span>
-        </a>
-        <div style="display:flex; align-items:center; gap: 1rem;">
-            <span class="role-badge">👑 Super Admin</span>
-            <span id="user-display" style="font-size: 0.9rem; font-weight: 600;">admin@mediassist.com</span>
-            <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+    <div class="sidebar">
+        <div class="sidebar-brand">MediAssist</div>
+        <div class="sidebar-nav">
+            <a class="nav-item active" data-target="dashboard">Dashboard</a>
+            <a class="nav-item" data-target="applications">Applications</a>
+            <a class="nav-item" data-target="hospitals">Hospitals</a>
+            <a class="nav-item" data-target="users">Users</a>
         </div>
-    </nav>
-
-    <div class="container">
-        <div class="page-header">
-            <h1>Platform Administration & Hospital Network</h1>
-            <p>Global company view: Approve new clinics, view all registered hospitals, and provision hospital manager logins.</p>
+        <div class="sidebar-footer">
+            <div id="user-email-display" class="user-email">loading...</div>
+            <button class="btn-logout" id="logout-btn">Logout</button>
         </div>
+    </div>
 
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon">🏥</div>
-                <div class="stat-content">
-                    <h3>Total Hospitals</h3>
-                    <div class="stat-number" id="total-hospitals">0</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:#dcfce7; color:#16a34a;">✅</div>
-                <div class="stat-content">
-                    <h3>Active Hospitals</h3>
-                    <div class="stat-number" id="active-hospitals">0</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon" style="background:#ffedd5; color:#ea580c;">⏳</div>
-                <div class="stat-content">
-                    <h3>Pending Approval</h3>
-                    <div class="stat-number" id="pending-hospitals">0</div>
-                </div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-icon">👨‍⚕️</div>
-                <div class="stat-content">
-                    <h3>Total Network Doctors</h3>
-                    <div class="stat-number" id="total-doctors">0</div>
-                </div>
-            </div>
+    <div class="main-content">
+        <div class="topbar">
+            <h1 class="page-title" id="page-title">Dashboard</h1>
         </div>
-
-        <div class="card">
-            <div class="card-title">
-                <span>All Registered Hospitals Across Network</span>
-                <button class="btn btn-outline btn-sm" onclick="loadAdminData()">🔄 Refresh</button>
+        
+        <div class="content-area">
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-pane active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Hospitals</h3>
+                        <div class="value" id="stat-total-hospitals">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Hospitals</h3>
+                        <div class="value" id="stat-active-hospitals">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Pending Applications</h3>
+                        <div class="value" id="stat-pending">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Total Doctors</h3>
+                        <div class="value" id="stat-doctors">-</div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Recent Applications</h2>
+                    </div>
+                    <table id="recent-apps-table">
+                        <thead>
+                            <tr>
+                                <th>Hospital Name</th>
+                                <th>Contact Person</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
-            <div class="table-responsive">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Hospital Name</th>
-                            <th>Address & Helpline</th>
-                            <th>Status</th>
-                            <th>Doctors</th>
-                            <th>Assigned Managers</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="hospitals-tbody">
-                        <tr><td colspan="6" style="text-align: center; color: var(--gray-400);">Loading hospital network data...</td></tr>
-                    </tbody>
-                </table>
+
+            <!-- Applications Tab -->
+            <div id="applications" class="tab-pane">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>All Applications</h2>
+                    </div>
+                    <table id="all-apps-table">
+                        <thead>
+                            <tr>
+                                <th>Hospital Name</th>
+                                <th>Contact Person</th>
+                                <th>Email</th>
+                                <th>City</th>
+                                <th>Specialties</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Hospitals Tab -->
+            <div id="hospitals" class="tab-pane">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Approved Hospitals</h2>
+                    </div>
+                    <table id="hospitals-table">
+                        <thead>
+                            <tr>
+                                <th>Hospital Name</th>
+                                <th>City</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Users Tab -->
+            <div id="users" class="tab-pane">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Platform Users</h2>
+                    </div>
+                    <table id="users-table">
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Name</th>
+                                <th>Role</th>
+                                <th>Hospital</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Modal for Creating Hospital Manager Login -->
-    <div class="modal-overlay" id="manager-modal">
-        <div class="modal">
-            <h3 style="margin-bottom: 0.5rem;" id="modal-hospital-name">Create Manager Account</h3>
-            <p style="font-size: 0.85rem; color: var(--gray-600); margin-bottom: 1.25rem;">
-                This login will be scoped ONLY to manage this specific hospital.
-            </p>
-            <form onsubmit="handleCreateManager(event)">
-                <input type="hidden" id="modal-hospital-id" />
-                <div class="form-group" style="margin-bottom: 1rem;">
-                    <label style="font-weight: 600; font-size: 0.85rem;">Manager Full Name *</label>
-                    <input type="text" id="mgr-name" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid var(--gray-300);" required />
+    <!-- Add Manager Modal -->
+    <div class="modal" id="manager-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Hospital Manager</h2>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="add-manager-form">
+                <input type="hidden" id="mgr-hospital-id">
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="mgr-name" required>
                 </div>
-                <div class="form-group" style="margin-bottom: 1rem;">
-                    <label style="font-weight: 600; font-size: 0.85rem;">Manager Email *</label>
-                    <input type="email" id="mgr-email" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid var(--gray-300);" required />
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="mgr-email" required>
                 </div>
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label style="font-weight: 600; font-size: 0.85rem;">Password *</label>
-                    <input type="password" id="mgr-password" style="width:100%; padding:0.6rem; border-radius:6px; border:1px solid var(--gray-300);" required />
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="mgr-password" required>
                 </div>
-                <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
-                    <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Create Manager Account</button>
+                <div class="modal-footer">
+                    <button type="button" class="btn" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-blue">Save Manager</button>
                 </div>
             </form>
         </div>
     </div>
 
+    <div class="toast" id="toast">Success!</div>
+
     <script>
-        async function checkSuperAdminAuth() {
+        let currentUser = null;
+
+        async function checkAuth() {
             try {
                 const res = await fetch('/api/v1/auth/me');
-                if (!res.ok) { window.location.href = '/login.html'; return; }
+                if (!res.ok) throw new Error();
                 const user = await res.json();
-                if (user.role !== 'SUPER_ADMIN') {
-                    alert("Access Denied: Super Admin role required.");
-                    window.location.href = '/login.html';
-                    return;
-                }
-                document.getElementById('user-display').innerText = user.email;
-            } catch (e) {
+                if (user.role !== 'SUPER_ADMIN') throw new Error();
+                currentUser = user;
+                document.getElementById('user-email-display').textContent = user.email;
+                loadDashboardData();
+            } catch {
                 window.location.href = '/login.html';
             }
         }
 
-        async function loadAdminData() {
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // Navigation
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                
+                e.target.classList.add('active');
+                const target = e.target.getAttribute('data-target');
+                document.getElementById(target).classList.add('active');
+                
+                document.getElementById('page-title').textContent = e.target.textContent;
+                
+                if (target === 'dashboard') loadDashboardData();
+                else if (target === 'applications') loadApplications();
+                else if (target === 'hospitals') loadHospitals();
+                else if (target === 'users') loadUsers();
+            });
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            sessionStorage.clear();
+            window.location.href = '/login.html';
+        });
+
+        // Loaders
+        async function loadDashboardData() {
             try {
-                const [statsRes, hospitalsRes] = await Promise.all([
-                    fetch('/api/v1/admin/stats'),
-                    fetch('/api/v1/admin/hospitals')
-                ]);
-
-                if (statsRes.ok) {
-                    const stats = await statsRes.json();
-                    document.getElementById('total-hospitals').innerText = stats.totalHospitals;
-                    document.getElementById('active-hospitals').innerText = stats.activeHospitals;
-                    document.getElementById('pending-hospitals').innerText = stats.pendingHospitals;
-                    document.getElementById('total-doctors').innerText = stats.totalDoctors;
+                const res = await fetch('/api/v1/admin/stats');
+                if(res.ok) {
+                    const stats = await res.json();
+                    document.getElementById('stat-total-hospitals').textContent = stats.totalHospitals || 0;
+                    document.getElementById('stat-active-hospitals').textContent = stats.activeHospitals || 0;
+                    document.getElementById('stat-pending').textContent = stats.pendingApplications || 0;
+                    document.getElementById('stat-doctors').textContent = stats.totalDoctors || 0;
                 }
+                const appRes = await fetch('/api/v1/admin/applications');
+                if(appRes.ok) {
+                    const apps = await appRes.json();
+                    const tbody = document.querySelector('#recent-apps-table tbody');
+                    tbody.innerHTML = apps.slice(0, 5).map(app => `
+                        <tr>
+                            <td>${app.hospitalName}</td>
+                            <td>${app.contactPersonName}</td>
+                            <td><span class="badge badge-${app.status.toLowerCase()}">${app.status}</span></td>
+                        </tr>
+                    `).join('');
+                }
+            } catch(e) { console.error(e); }
+        }
 
-                if (hospitalsRes.ok) {
-                    const hospitals = await hospitalsRes.json();
-                    const tbody = document.getElementById('hospitals-tbody');
-
-                    if (hospitals.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No hospitals registered yet.</td></tr>';
-                        return;
-                    }
-
-                    tbody.innerHTML = hospitals.map(h => {
-                        let statusBadge = '<span class="badge badge-success">ACTIVE</span>';
-                        if (h.status === 'PENDING_APPROVAL') statusBadge = '<span class="badge badge-warning">PENDING APPROVAL</span>';
-                        if (h.status === 'SUSPENDED') statusBadge = '<span class="badge badge-danger">SUSPENDED</span>';
-
-                        const managerBadges = h.managers && h.managers.length > 0
-                            ? h.managers.map(m => `<span style="display:inline-block; background:var(--gray-100); padding:2px 8px; border-radius:4px; font-size:0.8rem; margin:2px;">👤 ${m.email}</span>`).join('')
-                            : '<span style="color:var(--gray-400); font-size:0.8rem;">No Manager Assigned</span>';
-
-                        return `
-                            <tr>
-                                <td>
-                                    <strong>${h.name}</strong><br>
-                                    <span style="font-size:0.75rem; color:var(--gray-400);">ID: #${h.id}</span>
-                                </td>
-                                <td>
-                                    <span style="font-size:0.85rem;">${h.address}</span><br>
-                                    <span style="font-size:0.8rem; color:var(--primary);">📞 ${h.phone}</span>
-                                </td>
-                                <td>${statusBadge}</td>
-                                <td><strong>${h.doctorCount}</strong> Doctors</td>
-                                <td>${managerBadges}</td>
-                                <td>
-                                    <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-                                        ${h.status !== 'ACTIVE' ? `<button class="btn btn-sm btn-primary" onclick="updateStatus(${h.id}, 'ACTIVE')">Approve</button>` : ''}
-                                        ${h.status === 'ACTIVE' ? `<button class="btn btn-sm btn-outline" style="color:var(--danger);" onclick="updateStatus(${h.id}, 'SUSPENDED')">Suspend</button>` : ''}
-                                        <button class="btn btn-sm btn-outline" onclick="openManagerModal(${h.id}, '${h.name}')">+ Manager</button>
+        async function loadApplications() {
+            try {
+                const res = await fetch('/api/v1/admin/applications');
+                if(res.ok) {
+                    const apps = await res.json();
+                    const tbody = document.querySelector('#all-apps-table tbody');
+                    tbody.innerHTML = apps.map(app => `
+                        <tr>
+                            <td>${app.hospitalName || app.name || '-'}</td>
+                            <td>${app.contactPersonName || '-'}</td>
+                            <td>${app.contactEmail || app.contactPersonEmail || '-'}</td>
+                            <td>${app.city || '-'}</td>
+                            <td>${Array.isArray(app.specialties) ? app.specialties.join(', ') : (app.specialties || '-')}</td>
+                            <td><span class="badge badge-${(app.status || '').toLowerCase()}">${app.status || 'UNKNOWN'}</span></td>
+                            <td>
+                                ${app.status === 'PENDING_REVIEW' ? `
+                                    <div class="flex-actions">
+                                        <button class="btn btn-green" onclick="approveApp(${app.id})">Approve</button>
+                                        <button class="btn btn-red" onclick="rejectApp(${app.id})">Reject</button>
                                     </div>
-                                </td>
-                            </tr>
-                        `;
-                    }).join('');
+                                ` : '-'}
+                            </td>
+                        </tr>
+                    `).join('');
                 }
-            } catch (err) {
-                console.error("Failed to load admin data:", err);
-            }
+            } catch(e) { console.error(e); }
         }
 
-        async function updateStatus(hospId, newStatus) {
-            await fetch(`/api/v1/admin/hospitals/${hospId}/status?status=${newStatus}`, { method: 'POST' });
-            loadAdminData();
+        async function loadHospitals() {
+            try {
+                const res = await fetch('/api/v1/admin/hospitals');
+                if(res.ok) {
+                    const hospitals = await res.json();
+                    const tbody = document.querySelector('#hospitals-table tbody');
+                    tbody.innerHTML = hospitals.map(h => `
+                        <tr>
+                            <td>${h.name}</td>
+                            <td>${h.city || '-'}</td>
+                            <td><span class="badge badge-active">${h.status || 'ACTIVE'}</span></td>
+                            <td>
+                                <button class="btn btn-blue" onclick="openManagerModal(${h.id})">Add Manager</button>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            } catch(e) { console.error(e); }
         }
 
-        function openManagerModal(id, name) {
-            document.getElementById('modal-hospital-id').value = id;
-            document.getElementById('modal-hospital-name').innerText = `Add Manager for: ${name}`;
-            document.getElementById('manager-modal').style.display = 'flex';
+        async function loadUsers() {
+            try {
+                const res = await fetch('/api/v1/admin/users');
+                if(res.ok) {
+                    const users = await res.json();
+                    const tbody = document.querySelector('#users-table tbody');
+                    tbody.innerHTML = users.map(u => `
+                        <tr>
+                            <td>${u.email}</td>
+                            <td>${u.name || '-'}</td>
+                            <td>${u.role}</td>
+                            <td>${u.hospitalName || '-'}</td>
+                            <td><span class="badge badge-${u.active ? 'active' : 'rejected'}">${u.active ? 'Active' : 'Inactive'}</span></td>
+                        </tr>
+                    `).join('');
+                }
+            } catch(e) { console.error(e); }
+        }
+
+        // Actions
+        async function approveApp(id) {
+            if(!confirm('Approve this application?')) return;
+            try {
+                const res = await fetch(`/api/v1/admin/applications/${id}/approve`, { method: 'POST' });
+                if(res.ok) { showToast('Approved successfully'); loadApplications(); }
+            } catch(e) { console.error(e); }
+        }
+
+        async function rejectApp(id) {
+            const reason = prompt('Enter rejection reason:');
+            if(!reason) return;
+            try {
+                const res = await fetch(`/api/v1/admin/applications/${id}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                });
+                if(res.ok) { showToast('Rejected successfully'); loadApplications(); }
+            } catch(e) { console.error(e); }
+        }
+
+        function openManagerModal(hospitalId) {
+            document.getElementById('mgr-hospital-id').value = hospitalId;
+            document.getElementById('add-manager-form').reset();
+            document.getElementById('manager-modal').classList.add('active');
         }
 
         function closeModal() {
-            document.getElementById('manager-modal').style.display = 'none';
+            document.getElementById('manager-modal').classList.remove('active');
         }
 
-        async function handleCreateManager(e) {
+        document.getElementById('add-manager-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const hospId = document.getElementById('modal-hospital-id').value;
+            const hid = document.getElementById('mgr-hospital-id').value;
             const payload = {
-                fullName: document.getElementById('mgr-name').value,
+                name: document.getElementById('mgr-name').value,
                 email: document.getElementById('mgr-email').value,
                 password: document.getElementById('mgr-password').value
             };
-
-            const res = await fetch(`/api/v1/admin/hospitals/${hospId}/managers`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (res.ok) {
-                alert("Manager account created successfully!");
-                closeModal();
-                loadAdminData();
-            } else {
-                const err = await res.json();
-                alert("Failed: " + (err.message || "Could not create manager"));
-            }
-        }
-
-        async function logout() {
-            await fetch('/api/v1/auth/logout', { method: 'POST' });
-            sessionStorage.clear();
-            window.location.href = '/login.html';
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            checkSuperAdminAuth();
-            loadAdminData();
+            try {
+                const res = await fetch(`/api/v1/admin/hospitals/${hid}/managers`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if(res.ok) {
+                    showToast('Manager added');
+                    closeModal();
+                }
+            } catch(e) { console.error(e); }
         });
+
+        // Init
+        checkAuth();
     </script>
 </body>
 </html>

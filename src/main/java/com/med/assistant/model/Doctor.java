@@ -58,6 +58,9 @@ public class Doctor {
     public boolean isAvailableToday() { return availableToday; }
     public void setAvailableToday(boolean availableToday) { this.availableToday = availableToday; }
 
+    public boolean isAvailable() { return availableToday; }
+    public void setAvailable(boolean available) { this.availableToday = available; }
+
     public String getRoomNumber() { return roomNumber; }
     public void setRoomNumber(String roomNumber) { this.roomNumber = roomNumber; }
 

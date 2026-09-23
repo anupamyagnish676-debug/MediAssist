@@ -3,377 +3,425 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hospital Operations Portal | MedAssist</title>
+    <title>Hospital Manager - MediAssist</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
     <style>
-        .hospital-banner {
-            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
-            color: #ffffff;
-            padding: 1.75rem 2rem;
-            border-radius: var(--border-radius);
-            margin-bottom: 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .manager-badge {
-            background: #dbeafe;
-            color: #1e40af;
-            padding: 4px 10px;
-            border-radius: 9999px;
-            font-size: 0.8rem;
-            font-weight: bold;
-        }
-        .section-tabs {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-            border-bottom: 1px solid var(--gray-200);
-            padding-bottom: 0.5rem;
-        }
-        .tab-btn {
-            background: transparent;
-            border: none;
-            padding: 0.5rem 1rem;
-            font-weight: 600;
-            color: var(--gray-600);
-            cursor: pointer;
-            border-radius: 6px;
-            transition: all 0.2s;
-        }
-        .tab-btn.active {
-            background: var(--primary);
-            color: #ffffff;
-        }
-        .tab-pane {
-            display: none;
-        }
-        .tab-pane.active {
-            display: block;
-        }
+        body { margin: 0; font-family: 'Inter', sans-serif; display: flex; min-height: 100vh; background-color: #f3f4f6; }
+        
+        /* Sidebar */
+        .sidebar { width: 260px; background-color: #111827; color: white; display: flex; flex-direction: column; }
+        .sidebar-brand { padding: 1.5rem; font-size: 1.25rem; font-weight: 700; border-bottom: 1px solid #374151; color: white; }
+        .sidebar-nav { flex: 1; padding: 1rem 0; }
+        .nav-item { padding: 0.75rem 1.5rem; display: block; color: #d1d5db; text-decoration: none; font-weight: 500; transition: background-color 0.2s; cursor: pointer; }
+        .nav-item:hover, .nav-item.active { background-color: #1f2937; color: white; border-left: 4px solid #0066FF; }
+        .sidebar-footer { padding: 1.5rem; border-top: 1px solid #374151; }
+        .user-email { font-size: 0.875rem; color: #9ca3af; margin-bottom: 0.75rem; word-break: break-all; }
+        .btn-logout { width: 100%; padding: 0.5rem; background-color: #374151; color: white; border: none; border-radius: 0.375rem; cursor: pointer; }
+        .btn-logout:hover { background-color: #4b5563; }
+
+        /* Main Content */
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar { background-color: white; padding: 1.5rem 2rem; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+        .page-title { font-size: 1.5rem; font-weight: 600; color: #111827; margin: 0; }
+        .content-area { padding: 2rem; overflow-y: auto; flex: 1; }
+        
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        
+        /* Stats */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .stat-card { background: white; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stat-card h3 { margin: 0; font-size: 0.875rem; color: #6b7280; font-weight: 500; }
+        .stat-card .value { font-size: 1.875rem; font-weight: 700; color: #111827; margin-top: 0.5rem; }
+
+        .banner { background: linear-gradient(135deg, #0066FF, #0052CC); color: white; padding: 2rem; border-radius: 0.5rem; margin-bottom: 2rem; display: flex; justify-content: space-between; align-items: center; }
+        .banner h2 { margin: 0; font-size: 1.5rem; }
+        .btn-tv { background: rgba(255,255,255,0.2); color: white; padding: 0.5rem 1rem; border-radius: 0.375rem; text-decoration: none; font-weight: 500; }
+        .btn-tv:hover { background: rgba(255,255,255,0.3); }
+
+        /* Tables & Cards */
+        .card { background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 1.5rem; margin-bottom: 1.5rem; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .card-header h2 { margin: 0; font-size: 1.125rem; font-weight: 600; }
+        
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 0.75rem 1rem; background-color: #f9fafb; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
+        td { padding: 1rem; font-size: 0.875rem; border-bottom: 1px solid #e5e7eb; color: #374151; }
+        
+        /* Forms */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group.full { grid-column: span 2; }
+        .form-group label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; }
+        .form-group input, .form-group select { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 0.375rem; box-sizing: border-box; }
+        
+        .btn { padding: 0.5rem 1rem; border: none; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; cursor: pointer; }
+        .btn-blue { background-color: #0066FF; color: white; }
+        .btn-blue:hover { background-color: #0052CC; }
+        .btn-red { background-color: #ef4444; color: white; }
+        .btn-red:hover { background-color: #dc2626; }
+        .btn-gray { background-color: #e5e7eb; color: #374151; }
+        .flex-actions { display: flex; gap: 0.5rem; }
+        
+        .badge { padding: 0.25rem 0.5rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+        .badge-active { background-color: #d1fae5; color: #065f46; }
+        .badge-inactive { background-color: #f3f4f6; color: #4b5563; }
+        
+        #add-doctor-form { display: none; background: #f9fafb; padding: 1.5rem; border-radius: 0.5rem; border: 1px solid #e5e7eb; margin-bottom: 1.5rem; }
+        
+        .toast { position: fixed; bottom: 20px; right: 20px; background-color: #10b981; color: white; padding: 1rem; border-radius: 0.375rem; opacity: 0; transition: opacity 0.3s; z-index: 100; pointer-events: none; }
+        .toast.show { opacity: 1; }
     </style>
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
-
-    <nav class="navbar">
-        <a href="/manager-portal.html" class="navbar-brand">
-            🏥 <span id="nav-hospital-name">Hospital Operations Portal</span>
-        </a>
-        <div style="display:flex; align-items:center; gap: 1rem;">
-            <span class="manager-badge">🏥 Hospital Manager</span>
-            <span id="user-email" style="font-size: 0.9rem; font-weight: 600;">manager@hospital.com</span>
-            <button class="btn btn-outline btn-sm" onclick="logout()">Logout</button>
+    <div class="sidebar">
+        <div class="sidebar-brand" id="sidebar-hospital-name">MediAssist</div>
+        <div class="sidebar-nav">
+            <a class="nav-item active" data-target="dashboard">Dashboard</a>
+            <a class="nav-item" data-target="doctors">Doctors</a>
+            <a class="nav-item" data-target="appointments">Appointments</a>
+            <a class="nav-item" data-target="settings">Settings</a>
         </div>
-    </nav>
-
-    <div class="container">
-        <!-- Hospital Context Banner -->
-        <div class="hospital-banner">
-            <div>
-                <span style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: #bae6fd;">Hospital Scope</span>
-                <h1 style="font-size: 1.75rem; margin: 0.25rem 0;" id="banner-hosp-name">Loading Hospital...</h1>
-                <p style="color: #e0f2fe; font-size: 0.9rem;" id="banner-hosp-address">Loading address...</p>
-            </div>
-            <div>
-                <a id="btn-tv-screen" href="/token-display.html" target="_blank" class="btn" style="background:#ffffff; color:#0369a1; font-weight:bold;">
-                    📺 Open Waiting Room TV Screen ↗
-                </a>
-            </div>
+        <div class="sidebar-footer">
+            <div id="user-email-display" class="user-email">loading...</div>
+            <button class="btn-logout" id="logout-btn">Logout</button>
         </div>
+    </div>
 
-        <!-- Section Navigation Tabs -->
-        <div class="section-tabs">
-            <button class="tab-btn active" onclick="switchTab('tab-doctors')">👨‍⚕️ Doctor Timetable & Availability</button>
-            <button class="tab-btn" onclick="switchTab('tab-reception')">📷 Receptionist QR Scanner</button>
-            <button class="tab-btn" onclick="switchTab('tab-appointments')">📅 Today's Appointments</button>
+    <div class="main-content">
+        <div class="topbar">
+            <h1 class="page-title" id="page-title">Dashboard</h1>
         </div>
-
-        <!-- Tab 1: Doctor Timetable & Slots -->
-        <div class="tab-pane active" id="tab-doctors">
-            <div class="card">
-                <div class="card-title">
-                    <span>Manage Doctors, Consultation Fees & Daily Token Limits</span>
-                    <button class="btn btn-primary btn-sm" onclick="toggleAddDocForm()">+ Add New Doctor</button>
+        
+        <div class="content-area">
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-pane active">
+                <div class="banner">
+                    <h2 id="banner-hospital-name">Hospital Name</h2>
+                    <a href="/tv-screen.html" class="btn-tv" target="_blank">Open TV Display</a>
                 </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Today's Appointments</h3>
+                        <div class="value" id="stat-appointments">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Doctors</h3>
+                        <div class="value" id="stat-active-doctors">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Available Doctors</h3>
+                        <div class="value" id="stat-available-doctors">0</div>
+                    </div>
+                </div>
+            </div>
 
-                <!-- Add Doctor Inline Form -->
-                <div id="add-doc-card" style="display:none; background:var(--gray-50); padding:1.25rem; border-radius:8px; margin-bottom:1.5rem; border:1px solid var(--gray-200);">
-                    <h4 style="margin-bottom:0.75rem;">Onboard Doctor to this Hospital</h4>
-                    <form onsubmit="handleAddDoctor(event)" style="display:grid; grid-template-columns: 2fr 2fr 1fr 1fr 1fr auto; gap:0.75rem; align-items:flex-end;">
-                        <div>
-                            <label style="font-size:0.75rem; font-weight:bold;">Doctor Name</label>
-                            <input type="text" id="new-doc-name" style="width:100%; padding:0.5rem; border-radius:6px; border:1px solid var(--gray-300);" placeholder="Dr. Full Name" required />
+            <!-- Doctors Tab -->
+            <div id="doctors" class="tab-pane">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Manage Doctors</h2>
+                        <button class="btn btn-blue" onclick="document.getElementById('add-doctor-form').style.display='block'">+ Add Doctor</button>
+                    </div>
+                    
+                    <form id="add-doctor-form">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Doctor Name</label>
+                                <input type="text" id="doc-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Department</label>
+                                <input type="text" id="doc-dept" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Room Number</label>
+                                <input type="text" id="doc-room">
+                            </div>
+                            <div class="form-group">
+                                <label>Consultation Fee</label>
+                                <input type="number" id="doc-fee" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Daily Token Limit</label>
+                                <input type="number" id="doc-limit" required>
+                            </div>
                         </div>
-                        <div>
-                            <label style="font-size:0.75rem; font-weight:bold;">Department</label>
-                            <input type="text" id="new-doc-dept" style="width:100%; padding:0.5rem; border-radius:6px; border:1px solid var(--gray-300);" placeholder="e.g. Cardiology" required />
+                        <div class="flex-actions" style="margin-top: 1rem;">
+                            <button type="submit" class="btn btn-blue">Save Doctor</button>
+                            <button type="button" class="btn btn-gray" onclick="document.getElementById('add-doctor-form').style.display='none'">Cancel</button>
                         </div>
-                        <div>
-                            <label style="font-size:0.75rem; font-weight:bold;">OPD Room</label>
-                            <input type="text" id="new-doc-room" style="width:100%; padding:0.5rem; border-radius:6px; border:1px solid var(--gray-300);" value="101" required />
-                        </div>
-                        <div>
-                            <label style="font-size:0.75rem; font-weight:bold;">Fee ($/₹)</label>
-                            <input type="number" id="new-doc-fee" style="width:100%; padding:0.5rem; border-radius:6px; border:1px solid var(--gray-300);" value="500" required />
-                        </div>
-                        <div>
-                            <label style="font-size:0.75rem; font-weight:bold;">Max Tokens</label>
-                            <input type="number" id="new-doc-tokens" style="width:100%; padding:0.5rem; border-radius:6px; border:1px solid var(--gray-300);" value="25" required />
-                        </div>
-                        <button type="submit" class="btn btn-primary" style="height:38px;">Save</button>
                     </form>
-                </div>
 
-                <div class="table-responsive">
-                    <table>
+                    <table id="doctors-table">
                         <thead>
                             <tr>
-                                <th>Doctor Name</th>
-                                <th>Specialization</th>
-                                <th>OPD Room</th>
-                                <th>Fee ($/₹)</th>
-                                <th>Daily Token Quota</th>
-                                <th>Today's Availability</th>
-                                <th>Action</th>
+                                <th>Name</th>
+                                <th>Department</th>
+                                <th>Room</th>
+                                <th>Fee</th>
+                                <th>Limit</th>
+                                <th>Status</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="doctors-tbody">
-                            <tr><td colspan="7" style="text-align:center; color:var(--gray-400);">Loading doctors...</td></tr>
-                        </tbody>
+                        <tbody></tbody>
                     </table>
                 </div>
             </div>
-        </div>
 
-        <!-- Tab 2: Receptionist QR Check-In Scanner -->
-        <div class="tab-pane" id="tab-reception">
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:2rem;">
+            <!-- Appointments Tab -->
+            <div id="appointments" class="tab-pane">
                 <div class="card">
-                    <div class="card-title">📷 Front-Desk QR Scanner</div>
-                    <div id="reader" style="border: 2px dashed var(--gray-400); border-radius: 8px;"></div>
-                    <div style="display:flex; gap:0.5rem; margin-top:1rem;">
-                        <input type="text" id="manual-token" placeholder="Or enter QR token manually" style="flex:1; padding:0.6rem; border-radius:6px; border:1px solid var(--gray-300);" />
-                        <button class="btn btn-primary" onclick="handleManualCheckIn()">Check-In</button>
+                    <div class="card-header">
+                        <h2>Today's Appointments</h2>
                     </div>
-                </div>
-
-                <div class="card" id="checkin-result" style="display:flex; flex-direction:column; justify-content:center; text-align:center;">
-                    <div style="font-size: 3rem; color: var(--gray-400);">📄</div>
-                    <h3>Waiting for QR Scan</h3>
-                    <p style="color: var(--gray-600); font-size: 0.9rem;">Scan patient appointment slip or enter code.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Tab 3: Today's Appointments -->
-        <div class="tab-pane" id="tab-appointments">
-            <div class="card">
-                <div class="card-title">
-                    <span>Today's Patient Bookings</span>
-                    <button class="btn btn-outline btn-sm" onclick="loadAppointments()">🔄 Refresh</button>
-                </div>
-                <div class="table-responsive">
-                    <table>
+                    <table id="appointments-table">
                         <thead>
                             <tr>
-                                <th>Token #</th>
+                                <th>Token</th>
                                 <th>Patient Phone</th>
                                 <th>Doctor</th>
                                 <th>Department</th>
-                                <th>Time Slot</th>
+                                <th>Time</th>
                                 <th>Status</th>
-                                <th>QR Code Token</th>
+                                <th>QR Token</th>
                             </tr>
                         </thead>
-                        <tbody id="appts-tbody">
-                            <tr><td colspan="7" style="text-align:center;">Loading appointments...</td></tr>
-                        </tbody>
+                        <tbody></tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- Settings Tab -->
+            <div id="settings" class="tab-pane">
+                <div class="card">
+                    <h2>Hospital Settings</h2>
+                    <form id="settings-form" style="max-width: 600px; margin-top: 1.5rem;">
+                        <div class="form-group">
+                            <label>Hospital Name</label>
+                            <input type="text" id="set-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Address</label>
+                            <input type="text" id="set-address">
+                        </div>
+                        <div class="form-group">
+                            <label>Contact Phone</label>
+                            <input type="text" id="set-phone">
+                        </div>
+                        <div class="form-group">
+                            <label>Brand Color (Hex)</label>
+                            <input type="text" id="set-color" placeholder="#0066FF">
+                        </div>
+                        <button type="submit" class="btn btn-blue">Save Changes</button>
+                    </form>
                 </div>
             </div>
         </div>
     </div>
 
+    <div class="toast" id="toast">Success!</div>
+
     <script>
-        let currentHospitalId = null;
+        let currentUser = null;
+        let myHospital = null;
 
-        function switchTab(tabId) {
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-            event.target.classList.add('active');
-            document.getElementById(tabId).classList.add('active');
-
-            if (tabId === 'tab-reception') initScanner();
-            if (tabId === 'tab-appointments') loadAppointments();
-        }
-
-        async function checkManagerAuth() {
+        async function checkAuth() {
             try {
                 const res = await fetch('/api/v1/auth/me');
-                if (!res.ok) { window.location.href = '/login.html'; return; }
+                if (!res.ok) throw new Error();
                 const user = await res.json();
-                if (user.role !== 'HOSPITAL_MANAGER') {
-                    alert("Access Denied: Hospital Manager role required.");
-                    window.location.href = '/login.html';
-                    return;
-                }
-                document.getElementById('user-email').innerText = user.email;
-                loadHospitalDetails();
-            } catch (e) {
+                if (user.role !== 'HOSPITAL_MANAGER') throw new Error();
+                currentUser = user;
+                document.getElementById('user-email-display').textContent = user.email;
+                await loadMyHospital();
+                loadDashboardData();
+            } catch {
                 window.location.href = '/login.html';
             }
         }
 
-        async function loadHospitalDetails() {
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // Nav
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.remove('active'));
+                
+                e.target.classList.add('active');
+                const target = e.target.getAttribute('data-target');
+                document.getElementById(target).classList.add('active');
+                document.getElementById('page-title').textContent = e.target.textContent;
+                
+                if (target === 'dashboard') loadDashboardData();
+                else if (target === 'doctors') loadDoctors();
+                else if (target === 'appointments') loadAppointments();
+                else if (target === 'settings') fillSettings();
+            });
+        });
+
+        document.getElementById('logout-btn').addEventListener('click', () => {
+            sessionStorage.clear();
+            window.location.href = '/login.html';
+        });
+
+        async function loadMyHospital() {
             try {
                 const res = await fetch('/api/v1/hospital-manager/my-hospital');
-                if (res.ok) {
-                    const hosp = await res.json();
-                    currentHospitalId = hosp.id;
-                    document.getElementById('nav-hospital-name').innerText = hosp.name;
-                    document.getElementById('banner-hosp-name').innerText = hosp.name;
-                    document.getElementById('banner-hosp-address').innerText = `📍 ${hosp.address} • 📞 Helpline: ${hosp.phone}`;
-                    document.getElementById('btn-tv-screen').href = `/token-display.html?hospitalId=${hosp.id}`;
-                    loadDoctors();
+                if(res.ok) {
+                    myHospital = await res.json();
+                    document.getElementById('sidebar-hospital-name').textContent = myHospital.name;
+                    document.getElementById('banner-hospital-name').textContent = myHospital.name;
                 }
-            } catch (err) {
-                console.error("Failed to load hospital details:", err);
-            }
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadDashboardData() {
+            try {
+                const docRes = await fetch('/api/v1/hospital-manager/doctors');
+                if(docRes.ok) {
+                    const doctors = await docRes.json();
+                    document.getElementById('stat-active-doctors').textContent = doctors.length;
+                    document.getElementById('stat-available-doctors').textContent = doctors.filter(d => d.availableToday ?? d.available).length;
+                }
+                const apptRes = await fetch('/api/v1/hospital-manager/today-appointments');
+                if(apptRes.ok) {
+                    const appts = await apptRes.json();
+                    document.getElementById('stat-appointments').textContent = appts.length;
+                }
+            } catch(e) {}
         }
 
         async function loadDoctors() {
             try {
                 const res = await fetch('/api/v1/hospital-manager/doctors');
-                if (res.ok) {
+                if(res.ok) {
                     const doctors = await res.json();
-                    const tbody = document.getElementById('doctors-tbody');
-                    if (doctors.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No doctors added yet.</td></tr>';
-                        return;
-                    }
-
-                    tbody.innerHTML = doctors.map(d => `
+                    const tbody = document.querySelector('#doctors-table tbody');
+                    tbody.innerHTML = doctors.map(d => {
+                        const isAvail = d.availableToday !== undefined ? d.availableToday : d.available;
+                        return `
                         <tr>
-                            <td><strong>${d.name}</strong></td>
+                            <td>${d.name}</td>
                             <td>${d.department}</td>
-                            <td>Room ${d.roomNumber}</td>
-                            <td>$${d.consultationFee.toFixed(2)}</td>
-                            <td>${d.dailyTokenLimit} max tokens</td>
+                            <td>${d.roomNumber || '-'}</td>
+                            <td>₹${d.consultationFee}</td>
+                            <td>${d.dailyTokenLimit}</td>
+                            <td><span class="badge ${isAvail ? 'badge-active' : 'badge-inactive'}">${isAvail ? 'Available' : 'Unavailable'}</span></td>
                             <td>
-                                <span class="badge ${d.availableToday ? 'badge-success' : 'badge-danger'}">
-                                    ${d.availableToday ? 'Available Today' : 'On Leave'}
-                                </span>
-                            </td>
-                            <td>
-                                <button class="btn btn-sm ${d.availableToday ? 'btn-outline' : 'btn-primary'}"
-                                        onclick="toggleAvailability(${d.id})">
-                                    ${d.availableToday ? 'Mark On Leave' : 'Mark Available'}
-                                </button>
+                                <div class="flex-actions">
+                                    <button class="btn btn-gray" onclick="toggleDoc(${d.id})">Toggle</button>
+                                    <button class="btn btn-red" onclick="deleteDoc(${d.id})">Del</button>
+                                </div>
                             </td>
                         </tr>
-                    `).join('');
+                    `;}).join('');
                 }
-            } catch (err) {
-                console.error("Error loading doctors:", err);
-            }
-        }
-
-        async function toggleAvailability(doctorId) {
-            await fetch(`/api/v1/hospital-manager/doctors/${doctorId}/availability`, { method: 'POST' });
-            loadDoctors();
-        }
-
-        function toggleAddDocForm() {
-            const form = document.getElementById('add-doc-card');
-            form.style.display = form.style.display === 'none' ? 'block' : 'none';
-        }
-
-        async function handleAddDoctor(e) {
-            e.preventDefault();
-            const payload = {
-                name: document.getElementById('new-doc-name').value,
-                department: document.getElementById('new-doc-dept').value,
-                roomNumber: document.getElementById('new-doc-room').value,
-                consultationFee: parseFloat(document.getElementById('new-doc-fee').value),
-                dailyTokenLimit: parseInt(document.getElementById('new-doc-tokens').value, 10)
-            };
-
-            const res = await fetch('/api/v1/hospital-manager/doctors', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (res.ok) {
-                toggleAddDocForm();
-                loadDoctors();
-            } else {
-                alert("Failed to add doctor.");
-            }
+            } catch(e) { console.error(e); }
         }
 
         async function loadAppointments() {
             try {
                 const res = await fetch('/api/v1/hospital-manager/today-appointments');
-                if (res.ok) {
+                if(res.ok) {
                     const appts = await res.json();
-                    const tbody = document.getElementById('appts-tbody');
-                    if (appts.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No appointments today.</td></tr>';
-                        return;
-                    }
+                    const tbody = document.querySelector('#appointments-table tbody');
                     tbody.innerHTML = appts.map(a => `
                         <tr>
-                            <td><strong style="color:var(--primary); font-size:1.1rem;">#${String(a.serialNumber).padStart(2,'0')}</strong></td>
+                            <td>${a.tokenNumber}</td>
                             <td>${a.patientPhone}</td>
-                            <td>${a.doctor.name}</td>
-                            <td>${a.doctor.department}</td>
-                            <td>${a.timeSlot}</td>
-                            <td><span class="badge ${a.status === 'CHECKED_IN' ? 'badge-success' : 'badge-warning'}">${a.status}</span></td>
-                            <td><code>${a.qrCodeToken}</code></td>
+                            <td>${a.doctorName}</td>
+                            <td>${a.department}</td>
+                            <td>${new Date(a.appointmentTime).toLocaleTimeString()}</td>
+                            <td>${a.status}</td>
+                            <td>${a.qrToken || '-'}</td>
                         </tr>
                     `).join('');
                 }
-            } catch (err) {}
+            } catch(e) { console.error(e); }
         }
 
-        let scannerInitialized = false;
-        function initScanner() {
-            if (scannerInitialized) return;
-            scannerInitialized = true;
-            const scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 250, height: 250 } });
-            scanner.render(decodedText => processToken(decodedText));
+        document.getElementById('add-doctor-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                name: document.getElementById('doc-name').value,
+                department: document.getElementById('doc-dept').value,
+                roomNumber: document.getElementById('doc-room').value,
+                consultationFee: parseFloat(document.getElementById('doc-fee').value),
+                dailyTokenLimit: parseInt(document.getElementById('doc-limit').value),
+                available: true
+            };
+            try {
+                const res = await fetch('/api/v1/hospital-manager/doctors', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if(res.ok) {
+                    showToast('Doctor added');
+                    document.getElementById('add-doctor-form').reset();
+                    document.getElementById('add-doctor-form').style.display='none';
+                    loadDoctors();
+                    loadDashboardData();
+                }
+            } catch(e) {}
+        });
+
+        async function toggleDoc(id) {
+            try {
+                await fetch(`/api/v1/hospital-manager/doctors/${id}/availability`, { method: 'POST' });
+                loadDoctors();
+            } catch(e) {}
         }
 
-        async function processToken(token) {
-            const res = await fetch(`/api/v1/appointments/check-in?token=${encodeURIComponent(token)}`, { method: 'POST' });
-            const data = await res.json();
-            const container = document.getElementById('checkin-result');
-            if (data.success) {
-                container.innerHTML = `
-                    <span class="badge badge-success" style="font-size:1rem; padding:0.5rem 1rem;">✅ Checked In</span>
-                    <div style="font-size:4rem; font-weight:900; color:var(--primary); margin:1rem 0;">#${String(data.serialNumber).padStart(2,'0')}</div>
-                    <h3>Patient: ${data.patientName} (${data.patientPhone})</h3>
-                    <p style="margin-top:0.5rem;"><strong>Doctor:</strong> ${data.doctorName} (Room ${data.roomNumber})</p>
-                `;
-            } else {
-                container.innerHTML = `<h3 style="color:var(--danger);">❌ ${data.message || 'Invalid QR Token'}</h3>`;
+        async function deleteDoc(id) {
+            if(!confirm('Delete this doctor?')) return;
+            try {
+                await fetch(`/api/v1/hospital-manager/doctors/${id}`, { method: 'DELETE' });
+                loadDoctors();
+                loadDashboardData();
+            } catch(e) {}
+        }
+
+        function fillSettings() {
+            if(myHospital) {
+                document.getElementById('set-name').value = myHospital.name || '';
+                document.getElementById('set-address').value = myHospital.address || '';
+                document.getElementById('set-phone').value = myHospital.phone || '';
+                document.getElementById('set-color').value = myHospital.brandColor || '';
             }
         }
 
-        function handleManualCheckIn() {
-            const val = document.getElementById('manual-token').value.trim();
-            if (val) processToken(val);
-        }
+        document.getElementById('settings-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                name: document.getElementById('set-name').value,
+                address: document.getElementById('set-address').value,
+                phone: document.getElementById('set-phone').value,
+                brandColor: document.getElementById('set-color').value
+            };
+            try {
+                const res = await fetch('/api/v1/hospital-manager/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if(res.ok) {
+                    showToast('Settings updated');
+                    await loadMyHospital();
+                }
+            } catch(e) {}
+        });
 
-        async function logout() {
-            await fetch('/api/v1/auth/logout', { method: 'POST' });
-            sessionStorage.clear();
-            window.location.href = '/login.html';
-        }
-
-        document.addEventListener('DOMContentLoaded', checkManagerAuth);
+        checkAuth();
     </script>
 </body>
 </html>

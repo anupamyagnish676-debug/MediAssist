@@ -15,6 +15,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.*;
 
 @RestController
@@ -35,6 +36,7 @@ public class AuthController {
     }
 
     public record LoginRequest(String email, String password) {}
+    public record ChangePasswordRequest(String currentPassword, String newPassword) {}
 
     public record UserProfileResponse(
             Long id,
@@ -42,7 +44,8 @@ public class AuthController {
             String fullName,
             String role,
             Long hospitalId,
-            String hospitalName
+            String hospitalName,
+            boolean mustChangePassword
     ) {}
 
     @PostMapping("/login")
@@ -63,6 +66,10 @@ public class AuthController {
                     .body(Map.of("message", "This account has been deactivated."));
         }
 
+        // Record last login
+        user.setLastLoginAt(LocalDateTime.now());
+        userRepository.save(user);
+
         // Create authentication
         List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
         Authentication auth = new UsernamePasswordAuthenticationToken(user.getEmail(), null, authorities);
@@ -78,7 +85,8 @@ public class AuthController {
                 user.getFullName(),
                 user.getRole().name(),
                 user.getHospital() != null ? user.getHospital().getId() : null,
-                user.getHospital() != null ? user.getHospital().getName() : null
+                user.getHospital() != null ? user.getHospital().getName() : null,
+                user.isMustChangePassword()
         );
 
         return ResponseEntity.ok(profile);
@@ -104,9 +112,37 @@ public class AuthController {
                 user.getFullName(),
                 user.getRole().name(),
                 user.getHospital() != null ? user.getHospital().getId() : null,
-                user.getHospital() != null ? user.getHospital().getName() : null
+                user.getHospital() != null ? user.getHospital().getName() : null,
+                user.isMustChangePassword()
         );
 
         return ResponseEntity.ok(profile);
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<?> changePassword(@RequestBody ChangePasswordRequest req) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        if (req.newPassword() == null || req.newPassword().length() < 6) {
+            return ResponseEntity.badRequest().body(Map.of("message", "New password must be at least 6 characters."));
+        }
+
+        String email = auth.getName();
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
+        if (userOpt.isEmpty()) return ResponseEntity.notFound().build();
+
+        User user = userOpt.get();
+        if (req.currentPassword() != null && !passwordEncoder.matches(req.currentPassword(), user.getPassword())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Current password does not match."));
+        }
+
+        user.setPassword(passwordEncoder.encode(req.newPassword()));
+        user.setMustChangePassword(false);
+        userRepository.save(user);
+
+        return ResponseEntity.ok(Map.of("success", true, "message", "Password changed successfully."));
     }
 }
