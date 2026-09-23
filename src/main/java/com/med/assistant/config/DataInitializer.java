@@ -96,9 +96,7 @@ public class DataInitializer {
                     LocalDate.now(), "10:30 AM", 1, qrToken1);
             apptRepo.save(a1);
             try {
-                String pdf = pdfService.generatePdfSlip(a1);
-                a1.setPdfFilePath(pdf);
-                apptRepo.save(a1);
+                pdfService.generatePdfSlip(a1);
             } catch (Exception ignored) {}
 
             String qrToken2 = "DEMO-QR-002";

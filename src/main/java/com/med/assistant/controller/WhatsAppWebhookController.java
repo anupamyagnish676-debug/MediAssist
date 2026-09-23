@@ -233,10 +233,12 @@ public class WhatsAppWebhookController {
 
         appointmentRepository.save(appointment);
 
-        // Generate Branded PDF Slip with QR Code
-        String pdfPath = pdfService.generatePdfSlip(appointment);
-        appointment.setPdfFilePath(pdfPath);
-        appointmentRepository.save(appointment);
+        // Generate Branded PDF Slip with QR Code (in-memory)
+        try {
+            pdfService.generatePdfSlip(appointment);
+        } catch (Exception e) {
+            // PDF generation is non-critical, log and continue
+        }
 
         // Send Confirmation Text
         String confirmation = """

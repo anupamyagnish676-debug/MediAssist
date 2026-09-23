@@ -98,20 +98,15 @@ public class AppointmentApiController {
         if (opt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
-        Appointment appt = opt.get();
         try {
-            java.io.File file = appt.getPdfFilePath() != null ? new java.io.File(appt.getPdfFilePath()) : null;
-            if (file == null || !file.exists()) {
-                String generatedPath = pdfService.generatePdfSlip(appt);
-                appt.setPdfFilePath(generatedPath);
-                appointmentRepository.save(appt);
-                file = new java.io.File(generatedPath);
+            byte[] pdfBytes = pdfService.generateAndGetBytes(opt.get());
+            if (pdfBytes == null || pdfBytes.length == 0) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
             }
-            byte[] fileBytes = java.nio.file.Files.readAllBytes(file.toPath());
             return ResponseEntity.ok()
                     .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/pdf")
-                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Appointment_Token_" + appt.getSerialNumber() + ".pdf\"")
-                    .body(fileBytes);
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Appointment_Token_" + opt.get().getSerialNumber() + ".pdf\"")
+                    .body(pdfBytes);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }

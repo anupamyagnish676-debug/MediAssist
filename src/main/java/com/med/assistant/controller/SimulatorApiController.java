@@ -139,12 +139,12 @@ public class SimulatorApiController {
 
                 String pdfUrl = null;
                 try {
-                    String pdfPath = pdfService.generatePdfSlip(appt);
-                    appt.setPdfFilePath(pdfPath);
-                    appointmentRepository.save(appt);
+                    pdfService.generatePdfSlip(appt);
                     pdfUrl = "/api/v1/appointments/" + appt.getId() + "/pdf";
                 } catch (Exception ex) {
                     logger.error("Could not generate PDF slip: {}", ex.getMessage(), ex);
+                    // Still provide the URL — the download endpoint will generate on-demand
+                    pdfUrl = "/api/v1/appointments/" + appt.getId() + "/pdf";
                 }
 
                 String room = doc.getRoomNumber() != null ? doc.getRoomNumber() : "101";
