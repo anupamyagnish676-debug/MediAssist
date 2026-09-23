@@ -120,6 +120,8 @@ public class DatabaseConfig {
                 stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS applied_at TIMESTAMP;");
                 stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP;");
                 stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS rejection_reason TEXT;");
+                // Drop outdated check constraint from previous enum values
+                stmt.execute("ALTER TABLE hospitals DROP CONSTRAINT IF EXISTS hospitals_status_check;");
                 stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE';");
 
                 // Users table columns
