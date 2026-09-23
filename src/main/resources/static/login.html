@@ -65,13 +65,16 @@
             <form id="login-form">
                 <div class="form-group">
                     <label for="email">Email Address</label>
-                    <input type="email" id="email" required placeholder="name@hospital.com">
+                    <input type="email" id="email" required placeholder="name@hospital.com" autocomplete="username">
                 </div>
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" required placeholder="••••••••">
+                    <div style="position: relative;">
+                        <input type="password" id="password" required placeholder="••••••••" autocomplete="current-password" style="padding-right: 44px;">
+                        <button type="button" id="toggle-password" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: #6B7280; font-size: 13px; font-weight: 500; padding: 4px 8px;">Show</button>
+                    </div>
                 </div>
-                <button type="submit" class="btn-primary">Sign In</button>
+                <button type="submit" class="btn-primary" id="submit-btn">Sign In</button>
             </form>
             
             <div class="links">
@@ -81,13 +84,24 @@
     </div>
 
     <script>
+        const toggleBtn = document.getElementById('toggle-password');
+        const passwordInput = document.getElementById('password');
+        toggleBtn.addEventListener('click', () => {
+            const isPassword = passwordInput.type === 'password';
+            passwordInput.type = isPassword ? 'text' : 'password';
+            toggleBtn.textContent = isPassword ? 'Hide' : 'Show';
+        });
+
         document.getElementById('login-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value.trim();
             const errorDiv = document.getElementById('error-message');
+            const submitBtn = document.getElementById('submit-btn');
             
             errorDiv.style.display = 'none';
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Signing in...';
             
             try {
                 const response = await fetch('/api/v1/auth/login', {
@@ -96,9 +110,12 @@
                     body: JSON.stringify({ email, password })
                 });
                 
-                if (!response.ok) throw new Error('Login failed');
-                
                 const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.message || 'Invalid email or password.');
+                }
+                
                 sessionStorage.setItem('user', JSON.stringify(data));
                 
                 if (data.role === 'SUPER_ADMIN') {
@@ -110,8 +127,11 @@
                     errorDiv.style.display = 'block';
                 }
             } catch (error) {
-                errorDiv.textContent = 'Invalid email or password.';
+                errorDiv.textContent = error.message || 'Invalid email or password.';
                 errorDiv.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Sign In';
             }
         });
     </script>

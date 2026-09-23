@@ -55,7 +55,12 @@ public class AuthController {
         }
 
         Optional<User> userOpt = userRepository.findByEmailIgnoreCase(req.email().trim());
-        if (userOpt.isEmpty() || !passwordEncoder.matches(req.password(), userOpt.get().getPassword())) {
+        boolean passwordMatches = userOpt.isPresent() && (
+                passwordEncoder.matches(req.password(), userOpt.get().getPassword()) ||
+                passwordEncoder.matches(req.password().trim(), userOpt.get().getPassword())
+        );
+
+        if (userOpt.isEmpty() || !passwordMatches) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "Invalid email or password."));
         }

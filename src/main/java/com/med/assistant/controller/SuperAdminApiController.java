@@ -49,6 +49,7 @@ public class SuperAdminApiController {
 
     public record CreateManagerRequest(String email, String password, String fullName) {}
     public record RejectRequest(String reason) {}
+    public record ResetPasswordRequest(String newPassword) {}
 
     // ==================== APPLICATIONS ====================
 
@@ -335,6 +336,38 @@ public class SuperAdminApiController {
         }).toList();
 
         return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/users/{id}/reset-password")
+    public ResponseEntity<?> resetUserPassword(@PathVariable Long id, @RequestBody(required = false) ResetPasswordRequest req) {
+        Optional<User> opt = userRepository.findById(id);
+        if (opt.isEmpty()) return ResponseEntity.notFound().build();
+
+        User user = opt.get();
+        String newPass = (req != null && req.newPassword() != null && !req.newPassword().isBlank())
+                ? req.newPassword().trim()
+                : generateTempPassword();
+
+        user.setPassword(passwordEncoder.encode(newPass));
+        user.setMustChangePassword(true);
+        userRepository.save(user);
+
+        // Send email with new password
+        try {
+            String hospitalName = user.getHospital() != null ? user.getHospital().getName() : "MediAssist Platform";
+            emailService.sendCredentials(user.getEmail(), hospitalName, user.getFullName(), newPass);
+        } catch (Exception e) {
+            logger.error("Failed to email reset password: {}", e.getMessage());
+        }
+
+        logger.info("Password reset for user '{}' (ID: {})", user.getEmail(), id);
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "message", "Password reset successfully for " + user.getEmail(),
+            "newPassword", newPass,
+            "email", user.getEmail()
+        ));
     }
 
     // ==================== STATS ====================
