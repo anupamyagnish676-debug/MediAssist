@@ -17,7 +17,7 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
-    @Value("${spring.mail.username:noreply@mediassist.com}")
+    @Value("${spring.mail.username:anupamyagnish676@gmail.com}")
     private String fromEmail;
 
     @Value("${app.base-url:https://mediassist-1hdl.onrender.com}")
@@ -144,7 +144,7 @@ public class EmailService {
     private void sendHtmlEmail(String to, String subject, String htmlBody) throws Exception {
         MimeMessage message = mailSender.createMimeMessage();
         MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-        helper.setFrom(fromEmail);
+        helper.setFrom(fromEmail, "MediAssist Platform");
         helper.setTo(to);
         helper.setSubject(subject);
         helper.setText(htmlBody, true);
