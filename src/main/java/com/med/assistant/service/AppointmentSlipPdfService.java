@@ -265,7 +265,7 @@ public class AppointmentSlipPdfService {
                 y -= 18;
 
                 // Consultation Fee
-                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Consultation Fee:", "\u20B9 " + String.format("%.2f", fee), darkText, mutedText);
+                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Consultation Fee:", "Rs. " + String.format("%.2f", fee), darkText, mutedText);
                 y -= 18;
 
                 // Doctor Available Time (only if not null)
@@ -346,7 +346,7 @@ public class AppointmentSlipPdfService {
                     cs.beginText();
                     cs.setFont(fontRegular, 7);
                     cs.newLineAtOffset(margin + 8, y);
-                    cs.showText("\u2022  " + instruction);
+                    cs.showText("-  " + instruction);
                     cs.endText();
                     y -= 13;
                 }
@@ -392,14 +392,14 @@ public class AppointmentSlipPdfService {
         cs.beginText();
         cs.setFont(fontBold, 8);
         cs.newLineAtOffset(margin + 8, y);
-        cs.showText(label);
+        cs.showText(cleanText(label));
         cs.endText();
 
         cs.setNonStrokingColor(darkText[0], darkText[1], darkText[2]);
         cs.beginText();
         cs.setFont(fontRegular, 9);
         cs.newLineAtOffset(margin + 120, y);
-        cs.showText(value);
+        cs.showText(cleanText(value));
         cs.endText();
     }
 
@@ -409,8 +409,17 @@ public class AppointmentSlipPdfService {
         return MatrixToImageWriter.toBufferedImage(bitMatrix);
     }
 
+    private String cleanText(String s) {
+        if (s == null) return "";
+        return s.replace("\u20B9", "Rs. ")
+                .replace("\u2022", "-")
+                .replaceAll("[^\\x20-\\x7E]", "")
+                .trim();
+    }
+
     private String truncate(String s, int maxLen) {
         if (s == null) return "";
-        return s.length() > maxLen ? s.substring(0, maxLen - 3) + "..." : s;
+        String clean = cleanText(s);
+        return clean.length() > maxLen ? clean.substring(0, maxLen - 3) + "..." : clean;
     }
 }
