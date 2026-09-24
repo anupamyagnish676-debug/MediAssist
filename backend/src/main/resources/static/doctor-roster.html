@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doctor Availability & Slot Roster | MedAssist</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="/index.html" class="navbar-brand">
+            🏥 <span>MedAssist Hospital Operations</span>
+        </a>
+        <ul class="navbar-links">
+            <li><a href="/index.html">Overview</a></li>
+            <li><a href="/whatsapp-simulator.html">💬 WhatsApp Simulator</a></li>
+            <li><a href="/hospital-register.html">Register Hospital</a></li>
+            <li><a href="/doctor-roster.html" class="active">Doctor Roster</a></li>
+            <li><a href="/receptionist.html">Receptionist QR Check-In</a></li>
+            <li><a href="/token-display.html" target="_blank">TV Waiting Screen ↗</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Doctor Availability & Token Management</h1>
+            <p>Hospitals maintain real-time doctor rosters so WhatsApp patients only see available physicians.</p>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                <span>Physician Roster (City Care Multispeciality Hospital)</span>
+                <button class="btn btn-outline btn-sm" onclick="loadDoctors()">🔄 Refresh</button>
+            </div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Doctor Name</th>
+                            <th>Specialization</th>
+                            <th>OPD Room</th>
+                            <th>Consultation Fee</th>
+                            <th>Daily Max Tokens</th>
+                            <th>Availability Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="doctor-tbody">
+                        <tr><td colspan="7" style="text-align: center; color: var(--gray-400);">Loading doctors...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+    <script>
+        async function loadDoctors() {
+            try {
+                const doctors = await App.getHospitalDoctors(1);
+                const tbody = document.getElementById('doctor-tbody');
+
+                tbody.innerHTML = doctors.map(d => `
+                    <tr>
+                        <td><strong>${d.name}</strong></td>
+                        <td>${d.department}</td>
+                        <td>Room ${d.roomNumber}</td>
+                        <td>$${d.consultationFee.toFixed(2)}</td>
+                        <td>
+                            <input type="number" value="${d.dailyTokenLimit}" min="5" max="100" style="width: 70px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--gray-200);"
+                                   onchange="updateLimit(${d.id}, this.value)" />
+                        </td>
+                        <td>
+                            <span class="badge ${d.availableToday ? 'badge-success' : 'badge-danger'}">
+                                ${d.availableToday ? 'Available Today' : 'On Leave'}
+                            </span>
+                        </td>
+                        <td>
+                            <button class="btn btn-sm ${d.availableToday ? 'btn-outline' : 'btn-primary'}" 
+                                    onclick="toggleAvailability(${d.id})">
+                                ${d.availableToday ? 'Set On Leave' : 'Set Available'}
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+
+            } catch (err) {
+                console.error("Failed to load doctor roster:", err);
+            }
+        }
+
+        async function toggleAvailability(doctorId) {
+            await App.toggleDoctorAvailability(doctorId);
+            await loadDoctors();
+        }
+
+        async function updateLimit(doctorId, newLimit) {
+            await App.updateTokenLimit(doctorId, parseInt(newLimit, 10));
+        }
+
+        document.addEventListener('DOMContentLoaded', loadDoctors);
+    </script>
+</body>
+</html>
