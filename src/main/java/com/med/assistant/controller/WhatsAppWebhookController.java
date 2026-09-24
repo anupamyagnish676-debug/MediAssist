@@ -252,30 +252,47 @@ public class WhatsAppWebhookController {
             // PDF generation is non-critical, log and continue
         }
 
+        String pdfUrl = "https://mediassist-1hdl.onrender.com/api/v1/appointments/" + appointment.getId() + "/pdf";
+
         // Send Confirmation Text
         String confirmation = """
-            🎉 Appointment Confirmed!
+            🎉 *Appointment Confirmed!*
             
-            🏥 Hospital: %s
-            👨‍⚕️ Doctor: %s (%s)
-            🚪 Room: %s
-            📅 Date: Today, %s
-            ⏰ Time: 11:00 AM
+            🏥 *Hospital:* %s
+            👨‍⚕️ *Doctor:* %s (%s)
+            🚪 *Room:* %s
+            📅 *Date:* Today, %s
+            ⏰ *Time:* 11:00 AM
             
-            👉 YOUR QUEUE TOKEN: #%02d
+            👉 *YOUR QUEUE TOKEN: #%02d*
             
-            📄 Your official branded PDF appointment slip with QR code has been generated.
-            Please show the QR code on your slip to the receptionist upon arrival for instant check-in!
+            📥 *Download Slip (PDF):*
+            %s
+            
+            📄 Show the QR code on your slip to the receptionist upon arrival for instant check-in!
             """.formatted(
                 hospital.getName(),
                 doctor.getName(),
                 doctor.getDepartment(),
                 doctor.getRoomNumber(),
                 LocalDate.now(),
-                nextTokenNumber
+                nextTokenNumber,
+                pdfUrl
         );
 
         whatsAppClient.sendTextMessage(fromPhone, confirmation);
+
+        // Also deliver the PDF document file directly into the WhatsApp conversation
+        try {
+            whatsAppClient.sendDocumentMessage(
+                    fromPhone,
+                    pdfUrl,
+                    "📄 Official Appointment Slip (Token #" + String.format("%02d", nextTokenNumber) + ")",
+                    "Appointment_Slip_Token_" + nextTokenNumber + ".pdf"
+            );
+        } catch (Exception e) {
+            logger.warn("Failed to dispatch PDF document attachment: {}", e.getMessage());
+        }
     }
 
     private void handleDocumentMessage(String fromPhone, String type, Map<String, Object> message) {
