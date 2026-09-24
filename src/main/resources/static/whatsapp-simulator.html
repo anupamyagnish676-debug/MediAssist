@@ -366,14 +366,29 @@
         }
 
         async function triggerLocationBooking() {
-            appendMessage("📍 Shared GPS Location (28.6139, 77.2090)", true);
+            let lat = 28.6139;
+            let lon = 77.2090;
+
+            if (navigator.geolocation) {
+                try {
+                    const pos = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 2000 });
+                    });
+                    lat = pos.coords.latitude;
+                    lon = pos.coords.longitude;
+                } catch (e) {
+                    // fallback to default
+                }
+            }
+
+            appendMessage(`📍 Shared GPS Location (${lat.toFixed(4)}, ${lon.toFixed(4)})`, true);
 
             try {
                 const reply = await sendToBackend({
                     patientPhone: "+919876543210",
                     messageType: "location",
-                    latitude: 28.6139,
-                    longitude: 77.2090
+                    latitude: lat,
+                    longitude: lon
                 });
 
                 if (reply && reply.replyText) {
