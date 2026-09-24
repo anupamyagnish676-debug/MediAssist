@@ -166,16 +166,163 @@ public class GeminiAiService {
     }
 
     private String generateMockTriageResponse(String userQuery) {
+        String q = userQuery != null ? userQuery.toLowerCase().trim() : "";
+
+        // Check if Hindi / Hinglish
+        boolean isHindi = q.contains("dard") || q.contains("bukhar") || q.contains("pet") || 
+                          q.contains("sar") || q.contains("sir") || q.contains("khansi") || 
+                          q.contains("hai") || q.contains("mujhe") || q.contains("kya") || q.contains("hoon");
+
+        if (isHindi) {
+            if (q.contains("sar") || q.contains("headache") || q.contains("sir")) {
+                return """
+                    🩺 *AI मेडिकल सहायक (परामर्श):*
+                    आपके सिरदर्द के लिए प्राथमिक देखभाल सलाह:
+
+                    • शांत और कम रोशनी वाले कमरे में विश्राम करें।
+                    • पर्याप्त मात्रा में पानी पिएं (डिहाइड्रेशन सिरदर्द का मुख्य कारण होता है)।
+                    • मोबाइल और स्क्रीन का उपयोग कम करें।
+                    • यदि दर्द 24-48 घंटे से अधिक रहे या बहुत तेज हो, तो तुरंत डॉक्टर से मिलें।
+
+                    👨‍⚕️ *परामर्श विभाग:* जनरल फिजिशियन या न्यूरोलॉजिस्ट
+                    📍 *टिप:* निकटतम अस्पताल और उपलब्ध डॉक्टर देखने के लिए अपनी लोकेशन पिन साझा करें!
+
+                    *(अस्वीकरण: मैं एक AI सहायक हूँ, डॉक्टर नहीं।)*
+                    """;
+            }
+            if (q.contains("bukhar") || q.contains("fever") || q.contains("tap")) {
+                return """
+                    🩺 *AI मेडिकल सहायक (परामर्श):*
+                    आपके बुखार के लिए प्राथमिक देखभाल सलाह:
+
+                    • हर 4 से 6 घंटे में अपना तापमान मापें और नोट करें।
+                    • खूब सारे तरल पदार्थ (पानी, ओआरएस, सूप) पिएं।
+                    • हल्के कपड़े पहनें और ठंडे पानी की पट्टियां माथे पर रखें।
+                    • यदि बुखार 102°F से अधिक हो या 3 दिन से अधिक रहे, तो तुरंत रक्त जांच कराएं।
+
+                    👨‍⚕️ *परामर्श विभाग:* जनरल मेडिसिन / फिजिशियन
+                    📍 *टिप:* निकटतम अस्पताल और उपलब्ध डॉक्टर देखने के लिए अपनी लोकेशन पिन साझा करें!
+
+                    *(अस्वीकरण: मैं एक AI सहायक हूँ, डॉक्टर नहीं।)*
+                    """;
+            }
+            if (q.contains("pet") || q.contains("stomach") || q.contains("gas") || q.contains("dast")) {
+                return """
+                    🩺 *AI मेडिकल सहायक (परामर्श):*
+                    पेट की समस्या के लिए प्राथमिक सलाह:
+
+                    • हल्का और सुपाच्य भोजन (खिचड़ी, दही, छाछ) लें।
+                    • मसालेदार, तला-भुना और कैफीन युक्त भोजन से बचें।
+                    • ओआरएस (ORS) या नारियल पानी पिएं।
+                    • यदि तेज दर्द या उल्टी हो, तो तुरंत डॉक्टर से मिलें।
+
+                    👨‍⚕️ *परामर्श विभाग:* गैस्ट्रोएंटेरोलॉजिस्ट / जनरल फिजिशियन
+                    📍 *टिप:* निकटतम अस्पताल और डॉक्टर देखने के लिए लोकेशन पिन भेजें!
+
+                    *(अस्वीकरण: मैं एक AI सहायक हूँ, डॉक्टर नहीं।)*
+                    """;
+            }
+            if (q.contains("khansi") || q.contains("cough") || q.contains("gala") || q.contains("cold")) {
+                return """
+                    🩺 *AI मेडिकल सहायक (परामर्श):*
+                    खांसी और जुकाम के लिए प्राथमिक सलाह:
+
+                    • दिन में 2-3 बार गर्म पानी से नमक के गरारे (गार्गल) करें।
+                    • गर्म पानी या काढ़ा पिएं और भाप (steam) लें।
+                    • ठंडी और खट्टी चीजों से परहेज करें।
+                    • यदि सांस लेने में तकलीफ हो, तो तुरंत अस्पताल पहुंचें।
+
+                    👨‍⚕️ *परामर्श विभाग:* ईएनटी (ENT) या जनरल फिजिशियन
+                    📍 *टिप:* अपने आस-पास के अस्पताल देखने के लिए लोकेशन पिन साझा करें!
+
+                    *(अस्वीकरण: मैं एक AI सहायक हूँ, डॉक्टर नहीं।)*
+                    """;
+            }
+        }
+
+        // English specific symptom triage
+        if (q.contains("headache") || q.contains("migraine") || q.contains("head pain")) {
+            return """
+                🩺 *AI Medical Health Assistant:*
+                Preliminary recommendations for **Headache**:
+
+                • Rest in a quiet, dimly lit room and keep your neck relaxed.
+                • Drink at least 2-3 glasses of water; dehydration is a frequent headache trigger.
+                • Apply a cool compress to your forehead or temples.
+                • Avoid screen glare and prolonged mobile/laptop use.
+                • If the headache is severe or accompanied by nausea or vision changes, seek medical care.
+
+                👨‍⚕️ *Recommended Specialist:* General Physician / Neurologist
+                📍 *Tip:* Share your location pin to view available doctors and book an appointment!
+
+                *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+                """;
+        }
+
+        if (q.contains("fever") || q.contains("temperature") || q.contains("chills")) {
+            return """
+                🩺 *AI Medical Health Assistant:*
+                Preliminary care guidance for **Fever**:
+
+                • Track your body temperature with a thermometer every 4-6 hours.
+                • Increase fluid intake (water, electrolyte solutions, clear soups).
+                • Wear lightweight, breathable cotton clothing and rest.
+                • If fever exceeds 102°F (38.9°C) or lasts over 48 hours, diagnostic tests are advised.
+
+                👨‍⚕️ *Recommended Specialist:* General Medicine / Physician
+                📍 *Tip:* Share your location pin to see available doctors near you and book an appointment!
+
+                *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+                """;
+        }
+
+        if (q.contains("stomach") || q.contains("abdomen") || q.contains("belly") || q.contains("cramp") || q.contains("nausea") || q.contains("vomit")) {
+            return """
+                🩺 *AI Medical Health Assistant:*
+                Preliminary care guidance for **Abdominal Discomfort**:
+
+                • Stick to a bland diet (bananas, rice, applesauce, toast - BRAT diet).
+                • Avoid dairy, spicy foods, caffeine, and heavy greasy meals.
+                • Sip oral rehydration solutions (ORS) or coconut water slowly.
+                • If pain is localized to the lower right abdomen or severe, visit the ER immediately.
+
+                👨‍⚕️ *Recommended Specialist:* Gastroenterologist / General Physician
+                📍 *Tip:* Share your location pin to view nearby hospitals and doctors!
+
+                *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+                """;
+        }
+
+        if (q.contains("cough") || q.contains("cold") || q.contains("sore throat") || q.contains("throat") || q.contains("sneez")) {
+            return """
+                🩺 *AI Medical Health Assistant:*
+                Preliminary care guidance for **Cold & Throat Symptoms**:
+
+                • Perform warm salt-water gargles 2-3 times daily to soothe throat irritation.
+                • Inhale warm steam to relieve nasal and airway congestion.
+                • Drink warm herbal teas with honey and ginger.
+                • Monitor your breathing and seek medical evaluation if cough persists over a week.
+
+                👨‍⚕️ *Recommended Specialist:* ENT Specialist / Pulmonologist
+                📍 *Tip:* Share your location pin to check available doctors and book a slot!
+
+                *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+                """;
+        }
+
+        // Generic intelligent response
         return """
-            🩺 AI Health Assistant (Informational):
-            Thank you for reaching out. Based on your query:
-            
-            • Remember to stay hydrated, maintain good rest, and monitor your symptoms.
-            • If symptoms persist for more than 48 hours or worsen, please schedule an appointment with a General Physician.
-            
-            📍 Tip: Share your location to see registered doctors available near you right now!
-            
-            *(Disclaimer: I am an AI, not a licensed medical doctor.)*
-            """;
+            🩺 *AI Medical Health Assistant:*
+            Thank you for consulting MediAssist regarding: *"%s"*
+
+            • Monitor the duration, intensity, and any triggers for these symptoms.
+            • Ensure optimal hydration, light nutrition, and restorative rest.
+            • If symptoms persist for more than 48 hours or worsen, please schedule an appointment.
+
+            👨‍⚕️ *Recommended Specialist:* General Physician
+            📍 *Tip:* Share your WhatsApp location pin to discover registered doctors and book an OPD appointment!
+
+            *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+            """.formatted(userQuery != null ? userQuery.trim() : "your inquiry");
     }
 }
