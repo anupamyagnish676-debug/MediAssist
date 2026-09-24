@@ -124,7 +124,7 @@ public class WhatsAppClientService {
     }
 
     private String resolvePhoneNumberId() {
-        if (phoneNumberId != null && !phoneNumberId.isBlank() && !phoneNumberId.contains("100000000000000")) {
+        if (phoneNumberId != null && !phoneNumberId.isBlank() && !phoneNumberId.contains("100000000000000") && !phoneNumberId.contains("132599243944197")) {
             return phoneNumberId.trim();
         }
         return "1325869243944497";

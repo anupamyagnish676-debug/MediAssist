@@ -67,7 +67,7 @@ public class GeminiAiService {
             return generateMockTriageResponse(userQuery);
         }
 
-        String[] candidateModels = { modelName, "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-2.5-flash", "gemini-pro" };
+        String[] candidateModels = { "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro" };
         String systemInstruction = """
             You are a compassionate, clinical AI Medical Assistant inside WhatsApp.
             GUIDELINES:
