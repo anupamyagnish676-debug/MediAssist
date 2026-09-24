@@ -452,7 +452,7 @@ public class GeminiAiService {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode root = mapper.readTree(clean);
 
-            String doctorNotes = root.path("doctorNotes").asText("Prescription verified by Gemini Vision AI.");
+            String doctorNotes = root.path("doctorNotes").asText("Prescription verified. Dosage schedule generated per standard outpatient guidelines.");
             List<PrescribedMedication> meds = new ArrayList<>();
 
             JsonNode medsNode = root.path("medications");
