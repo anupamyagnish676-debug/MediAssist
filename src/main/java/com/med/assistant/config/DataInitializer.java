@@ -25,6 +25,9 @@ public class DataInitializer {
 
     private static final Logger logger = LoggerFactory.getLogger(DataInitializer.class);
 
+    @org.springframework.beans.factory.annotation.Value("${app.seed-demo-data:false}")
+    private boolean seedDemoData;
+
     @Bean
     public CommandLineRunner initDatabase(HospitalRepository hospitalRepo,
                                           DoctorRepository doctorRepo,
@@ -35,7 +38,20 @@ public class DataInitializer {
                                           AppointmentSlipPdfService pdfService) {
         return args -> {
             try {
-                if (hospitalRepo.count() > 0) return;
+                // Always ensure Super Admin account exists
+                if (userRepo.findByEmailIgnoreCase("admin@mediassist.com").isEmpty()) {
+                    com.med.assistant.model.User admin = new com.med.assistant.model.User(
+                            "admin@mediassist.com",
+                            passwordEncoder.encode("Admin@123"),
+                            "Platform Administrator",
+                            com.med.assistant.model.User.Role.SUPER_ADMIN,
+                            null
+                    );
+                    userRepo.save(admin);
+                    logger.info("Super admin account initialized: admin@mediassist.com / Admin@123");
+                }
+
+                if (!seedDemoData || hospitalRepo.count() > 0) return;
 
                 logger.info("Seeding demo hospitals, doctors, and appointments...");
 

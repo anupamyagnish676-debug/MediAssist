@@ -92,8 +92,12 @@
     </div>
 
     <div class="main-content">
-        <div class="topbar">
+        <div class="topbar" style="display: flex; justify-content: space-between; align-items: center;">
             <h1 class="page-title" id="page-title">Dashboard</h1>
+            <button id="reset-all-data-btn" class="btn btn-red" onclick="resetAllPortalData()" style="padding: 0.5rem 1rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem;">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                Clear All Portal Data
+            </button>
         </div>
         
         <div class="content-area">
@@ -192,6 +196,7 @@
                                 <th>Role</th>
                                 <th>Hospital</th>
                                 <th>Status</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -322,12 +327,13 @@
                             <td>${Array.isArray(app.specialties) ? app.specialties.join(', ') : (app.specialties || '-')}</td>
                             <td><span class="badge badge-${(app.status || '').toLowerCase()}">${app.status || 'UNKNOWN'}</span></td>
                             <td>
-                                ${app.status === 'PENDING_REVIEW' ? `
-                                    <div class="flex-actions">
+                                <div class="flex-actions">
+                                    ${app.status === 'PENDING_REVIEW' || app.status === 'PENDING_APPROVAL' ? `
                                         <button class="btn btn-green" onclick="approveApp(${app.id})">Approve</button>
                                         <button class="btn btn-red" onclick="rejectApp(${app.id})">Reject</button>
-                                    </div>
-                                ` : '-'}
+                                    ` : ''}
+                                    <button class="btn btn-red" onclick="deleteApp(${app.id})" style="background-color: #dc2626;">Delete</button>
+                                </div>
                             </td>
                         </tr>
                     `).join('');
@@ -347,7 +353,10 @@
                             <td>${h.city || '-'}</td>
                             <td><span class="badge badge-active">${h.status || 'ACTIVE'}</span></td>
                             <td>
-                                <button class="btn btn-blue" onclick="openManagerModal(${h.id})">Add Manager</button>
+                                <div class="flex-actions">
+                                    <button class="btn btn-blue" onclick="openManagerModal(${h.id})">Add Manager</button>
+                                    <button class="btn btn-red" onclick="deleteHospital(${h.id})" style="background-color: #dc2626;">Delete</button>
+                                </div>
                             </td>
                         </tr>
                     `).join('');
@@ -368,6 +377,14 @@
                             <td>${u.role}</td>
                             <td>${u.hospitalName || '-'}</td>
                             <td><span class="badge badge-${u.active ? 'active' : 'rejected'}">${u.active ? 'Active' : 'Inactive'}</span></td>
+                            <td>
+                                <div class="flex-actions">
+                                    ${u.role !== 'SUPER_ADMIN' ? `
+                                        <button class="btn btn-blue" onclick="resetUserPasswordPrompt(${u.id}, '${u.email}')">Reset Pwd</button>
+                                        <button class="btn btn-red" onclick="deleteUser(${u.id})">Delete</button>
+                                    ` : '<span style="color: #9ca3af; font-size: 0.8rem;">Super Admin</span>'}
+                                </div>
+                            </td>
                         </tr>
                     `).join('');
                 }
@@ -446,6 +463,128 @@
                 }
             } catch(e) { console.error(e); }
         });
+
+        async function resetAllPortalData() {
+            const confirmed = confirm(
+                "⚠️ DANGER: Are you sure you want to DELETE ALL DATA from the portal?\n\n" +
+                "This will permanently delete:\n" +
+                "• All hospital applications\n" +
+                "• All hospitals\n" +
+                "• All doctors & schedules\n" +
+                "• All appointments & patient queue slips\n" +
+                "• All hospital manager user accounts\n\n" +
+                "Your Super Admin login (admin@mediassist.com) will be preserved.\n\n" +
+                "Click OK to proceed with wiping all data."
+            );
+            if (!confirmed) return;
+
+            const doubleCheck = prompt("Type 'DELETE' to confirm wiping all portal data:");
+            if (doubleCheck !== "DELETE") {
+                alert("Reset cancelled. Data was not modified.");
+                return;
+            }
+
+            try {
+                const btn = document.getElementById('reset-all-data-btn');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = 'Wiping Data...';
+                }
+
+                const res = await fetch('/api/v1/admin/data/reset-all', { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+
+                if (res.ok) {
+                    showToast(data.message || 'All portal data has been wiped successfully!');
+                    loadDashboardData();
+                    loadApplications();
+                    loadHospitals();
+                    loadUsers();
+                } else {
+                    showToast(data.message || 'Failed to wipe data.', 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showToast('Network error while resetting portal data.', 'error');
+            } finally {
+                const btn = document.getElementById('reset-all-data-btn');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg> Clear All Portal Data`;
+                }
+            }
+        }
+
+        async function deleteApp(id) {
+            if (!confirm('Are you sure you want to delete this application? All related hospital records, doctors, and appointments will also be deleted.')) return;
+            try {
+                const res = await fetch(`/api/v1/admin/applications/${id}`, { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    showToast(data.message || 'Application deleted successfully.');
+                    loadApplications();
+                    loadDashboardData();
+                } else {
+                    showToast(data.message || 'Failed to delete application.', 'error');
+                }
+            } catch (e) {
+                showToast('Network error while deleting application.', 'error');
+            }
+        }
+
+        async function deleteHospital(id) {
+            if (!confirm('Are you sure you want to delete this hospital? All doctors, manager accounts, and appointments will be permanently removed.')) return;
+            try {
+                const res = await fetch(`/api/v1/admin/hospitals/${id}`, { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    showToast(data.message || 'Hospital deleted successfully.');
+                    loadHospitals();
+                    loadDashboardData();
+                } else {
+                    showToast(data.message || 'Failed to delete hospital.', 'error');
+                }
+            } catch (e) {
+                showToast('Network error while deleting hospital.', 'error');
+            }
+        }
+
+        async function deleteUser(id) {
+            if (!confirm('Are you sure you want to delete this user?')) return;
+            try {
+                const res = await fetch(`/api/v1/admin/users/${id}`, { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    showToast(data.message || 'User deleted successfully.');
+                    loadUsers();
+                } else {
+                    showToast(data.message || 'Failed to delete user.', 'error');
+                }
+            } catch (e) {
+                showToast('Network error while deleting user.', 'error');
+            }
+        }
+
+        async function resetUserPasswordPrompt(id, email) {
+            const newPassword = prompt(`Enter new password for ${email} (or leave blank for auto-generated):`);
+            if (newPassword === null) return;
+            try {
+                const res = await fetch(`/api/v1/admin/users/${id}/reset-password`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ newPassword: newPassword.trim() || null })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    alert(`Password reset successfully!\n\nEmail: ${data.email}\nNew Password: ${data.newPassword}`);
+                    showToast('Password reset and emailed.');
+                } else {
+                    showToast(data.message || 'Failed to reset password.', 'error');
+                }
+            } catch (e) {
+                showToast('Network error while resetting password.', 'error');
+            }
+        }
 
         // Init
         checkAuth();

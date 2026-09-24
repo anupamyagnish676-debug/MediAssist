@@ -1,11 +1,10 @@
 package com.med.assistant.controller;
 
+import com.med.assistant.model.Appointment;
+import com.med.assistant.model.Doctor;
 import com.med.assistant.model.Hospital;
 import com.med.assistant.model.User;
-import com.med.assistant.repository.AppointmentRepository;
-import com.med.assistant.repository.DoctorRepository;
-import com.med.assistant.repository.HospitalRepository;
-import com.med.assistant.repository.UserRepository;
+import com.med.assistant.repository.*;
 import com.med.assistant.service.EmailService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -30,6 +30,8 @@ public class SuperAdminApiController {
     private final DoctorRepository doctorRepository;
     private final UserRepository userRepository;
     private final AppointmentRepository appointmentRepository;
+    private final MedicationReminderRepository medicationReminderRepository;
+    private final MedicalDocumentRepository medicalDocumentRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
 
@@ -37,12 +39,16 @@ public class SuperAdminApiController {
                                   DoctorRepository doctorRepository,
                                   UserRepository userRepository,
                                   AppointmentRepository appointmentRepository,
+                                  MedicationReminderRepository medicationReminderRepository,
+                                  MedicalDocumentRepository medicalDocumentRepository,
                                   PasswordEncoder passwordEncoder,
                                   EmailService emailService) {
         this.hospitalRepository = hospitalRepository;
         this.doctorRepository = doctorRepository;
         this.userRepository = userRepository;
         this.appointmentRepository = appointmentRepository;
+        this.medicationReminderRepository = medicationReminderRepository;
+        this.medicalDocumentRepository = medicalDocumentRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
     }
@@ -227,6 +233,33 @@ public class SuperAdminApiController {
         return ResponseEntity.ok(Map.of("success", true, "message", "Application rejected."));
     }
 
+    /**
+     * Delete an application (and its associated hospital data if any).
+     */
+    @DeleteMapping("/applications/{id}")
+    @Transactional
+    public ResponseEntity<?> deleteApplication(@PathVariable Long id) {
+        Optional<Hospital> opt = hospitalRepository.findById(id);
+        if (opt.isEmpty()) return ResponseEntity.notFound().build();
+
+        Hospital h = opt.get();
+        // Remove appointments for this hospital
+        List<Appointment> appts = appointmentRepository.findByHospitalId(h.getId());
+        appointmentRepository.deleteAll(appts);
+
+        // Remove doctors
+        List<Doctor> docs = doctorRepository.findByHospitalId(h.getId());
+        doctorRepository.deleteAll(docs);
+
+        // Remove managers
+        List<User> managers = userRepository.findByHospitalId(h.getId());
+        userRepository.deleteAll(managers);
+
+        hospitalRepository.delete(h);
+        logger.info("Application/Hospital ID {} ('{}') deleted by admin", id, h.getName());
+        return ResponseEntity.ok(Map.of("success", true, "message", "Application deleted successfully."));
+    }
+
     // ==================== HOSPITALS ====================
 
     @GetMapping("/hospitals")
@@ -316,6 +349,12 @@ public class SuperAdminApiController {
         ));
     }
 
+    @DeleteMapping("/hospitals/{id}")
+    @Transactional
+    public ResponseEntity<?> deleteHospital(@PathVariable Long id) {
+        return deleteApplication(id);
+    }
+
     // ==================== USERS ====================
 
     @GetMapping("/users")
@@ -336,6 +375,22 @@ public class SuperAdminApiController {
         }).toList();
 
         return ResponseEntity.ok(result);
+    }
+
+    @DeleteMapping("/users/{id}")
+    @Transactional
+    public ResponseEntity<?> deleteUser(@PathVariable Long id) {
+        Optional<User> opt = userRepository.findById(id);
+        if (opt.isEmpty()) return ResponseEntity.notFound().build();
+
+        User user = opt.get();
+        if (user.getRole() == User.Role.SUPER_ADMIN && "admin@mediassist.com".equalsIgnoreCase(user.getEmail())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Primary super administrator cannot be deleted."));
+        }
+
+        userRepository.delete(user);
+        logger.info("User ID {} ('{}') deleted by admin", id, user.getEmail());
+        return ResponseEntity.ok(Map.of("success", true, "message", "User deleted successfully."));
     }
 
     @PostMapping("/users/{id}/reset-password")
@@ -368,6 +423,68 @@ public class SuperAdminApiController {
             "newPassword", newPass,
             "email", user.getEmail()
         ));
+    }
+
+    // ==================== DATA MANAGEMENT ====================
+
+    /**
+     * Delete ALL data from the portal (applications, hospitals, doctors, appointments, documents, reminders, manager users).
+     * Preserves the primary Super Admin account (admin@mediassist.com).
+     */
+    @DeleteMapping("/data/reset-all")
+    @Transactional
+    public ResponseEntity<?> resetAllPortalData() {
+        logger.warn("RESET ALL PORTAL DATA initiated by Super Admin");
+
+        // 1. Delete all appointments
+        appointmentRepository.deleteAll();
+
+        // 2. Delete all medication reminders
+        medicationReminderRepository.deleteAll();
+
+        // 3. Delete all medical documents
+        medicalDocumentRepository.deleteAll();
+
+        // 4. Delete all doctors
+        doctorRepository.deleteAll();
+
+        // 5. Delete all non-admin users; detach hospital from super admin
+        List<User> users = userRepository.findAll();
+        for (User u : users) {
+            if (u.getRole() != User.Role.SUPER_ADMIN) {
+                userRepository.delete(u);
+            } else {
+                u.setHospital(null);
+                userRepository.save(u);
+            }
+        }
+
+        // 6. Delete all hospitals & applications
+        hospitalRepository.deleteAll();
+
+        // 7. Ensure Super Admin account is intact
+        if (userRepository.findByEmailIgnoreCase("admin@mediassist.com").isEmpty()) {
+            User admin = new User(
+                    "admin@mediassist.com",
+                    passwordEncoder.encode("Admin@123"),
+                    "Platform Administrator",
+                    User.Role.SUPER_ADMIN,
+                    null
+            );
+            userRepoSave(admin);
+            logger.info("Super admin recreated during portal reset.");
+        }
+
+        logger.info("All portal data wiped successfully. Preserved super admin: admin@mediassist.com");
+
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "All data wiped from portal successfully! All hospitals, applications, doctors, appointments, and manager accounts have been removed."
+        ));
+    }
+
+    private void userRepoSave(User admin) {
+        userRepository.save(admin);
     }
 
     // ==================== STATS ====================
