@@ -42,6 +42,9 @@ public class GeminiAiService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
+    private volatile String lastVlmError = "none";
+    public String getLastVlmError() { return lastVlmError; }
+
     // Deterministic safety patterns for red flags
     private static final Pattern RED_FLAGS = Pattern.compile(
             "\\b(chest pain|heart attack|can't breathe|difficulty breathing|shortness of breath|" +
@@ -169,11 +172,12 @@ public class GeminiAiService {
                     safeMime = "application/pdf";
                 }
 
+                // Canonical Google Proto3 JSON uses camelCase 'inlineData' and 'mimeType'
                 Map<String, Object> inlineData = Map.of(
-                        "mime_type", safeMime,
+                        "mimeType", safeMime,
                         "data", base64Data
                 );
-                Map<String, Object> imagePart = Map.of("inline_data", inlineData);
+                Map<String, Object> imagePart = Map.of("inlineData", inlineData);
 
                 String prompt = """
                     You are an expert clinical AI Pharmacist and Vision Assistant.
@@ -225,21 +229,56 @@ public class GeminiAiService {
                             PrescriptionAnalysisResult parsed = parsePrescriptionJson(rawText);
                             if (parsed != null && parsed.medications() != null && !parsed.medications().isEmpty()) {
                                 this.modelName = candidate;
+                                this.lastVlmError = "SUCCESS (model " + candidate + ")";
                                 logger.info("Successfully analyzed prescription using Gemini VLM model {}", candidate);
                                 return parsed;
                             }
                         }
+                    } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                        this.lastVlmError = candidate + " (HTTP " + e.getStatusCode() + "): " + e.getResponseBodyAsString();
+                        logger.warn("Prescription VLM candidate {} failed: {}", candidate, this.lastVlmError);
                     } catch (Exception e) {
+                        this.lastVlmError = candidate + ": " + e.getMessage();
                         logger.warn("Prescription VLM candidate {} failed: {}", candidate, e.getMessage());
                     }
                 }
             } catch (Exception e) {
+                this.lastVlmError = "Exception: " + e.getMessage();
                 logger.error("Error during Gemini prescription VLM analysis: {}", e.getMessage(), e);
             }
         }
 
         // Fallback clinical standard extractor
         return generateFallbackPrescriptionResult(fileName);
+    }
+
+    public Map<String, Object> testVlmConnection() {
+        Map<String, Object> result = new HashMap<>();
+        boolean hasKey = geminiApiKey != null && !geminiApiKey.isBlank() && !geminiApiKey.contains("mock");
+        result.put("apiKeyConfigured", hasKey);
+        result.put("keyPrefix", hasKey ? geminiApiKey.substring(0, Math.min(6, geminiApiKey.length())) + "..." : "NONE");
+
+        if (!hasKey) {
+            result.put("status", "NO_API_KEY");
+            return result;
+        }
+
+        try {
+            // 1x1 transparent PNG Base64
+            String tinyPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+            byte[] imageBytes = Base64.getDecoder().decode(tinyPng);
+            PrescriptionAnalysisResult res = analyzePrescriptionForReminders(imageBytes, "image/png", "test.png");
+            result.put("status", "SUCCESS");
+            result.put("doctorNotes", res != null ? res.doctorNotes() : "null");
+            result.put("medicationsCount", res != null && res.medications() != null ? res.medications().size() : 0);
+            result.put("lastVlmError", lastVlmError);
+            return result;
+        } catch (Exception e) {
+            result.put("status", "ERROR");
+            result.put("error", e.getMessage());
+            result.put("lastVlmError", lastVlmError);
+            return result;
+        }
     }
 
     private PrescriptionAnalysisResult parsePrescriptionJson(String rawText) {
@@ -325,11 +364,11 @@ public class GeminiAiService {
             }
 
             Map<String, Object> inlineData = Map.of(
-                    "mime_type", safeMime,
+                    "mimeType", safeMime,
                     "data", base64Data
             );
 
-            Map<String, Object> imagePart = Map.of("inline_data", inlineData);
+            Map<String, Object> imagePart = Map.of("inlineData", inlineData);
             Map<String, Object> textPart = Map.of("text", """
                 Analyze this medical document (prescription or lab report).
                 1. Identify the document type and date.

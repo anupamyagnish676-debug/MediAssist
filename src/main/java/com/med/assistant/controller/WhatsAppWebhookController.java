@@ -24,6 +24,8 @@ public class WhatsAppWebhookController {
 
     private static final Logger logger = LoggerFactory.getLogger(WhatsAppWebhookController.class);
 
+    public static final Map<String, Object> LAST_DEBUG = new java.util.concurrent.ConcurrentHashMap<>();
+
     @Value("${app.whatsapp.verify-token}")
     private String verifyToken;
 
@@ -121,6 +123,25 @@ public class WhatsAppWebhookController {
                 "medicationsCount", result != null && result.medications() != null ? result.medications().size() : 0,
                 "remindersScheduled", created
         ));
+    }
+
+    /**
+     * Diagnostic endpoint: Inspect live prescription VLM error or download status.
+     */
+    @GetMapping("/last-prescription-debug")
+    public ResponseEntity<Map<String, Object>> getLastPrescriptionDebug() {
+        Map<String, Object> debug = new HashMap<>(LAST_DEBUG);
+        debug.put("lastDownloadStatus", whatsAppClient.getLastDownloadStatus());
+        debug.put("lastVlmError", geminiAiService.getLastVlmError());
+        return ResponseEntity.ok(debug);
+    }
+
+    /**
+     * Diagnostic endpoint: Test Gemini VLM image recognition on a real image.
+     */
+    @GetMapping("/test-vlm")
+    public ResponseEntity<Map<String, Object>> testVlm() {
+        return ResponseEntity.ok(geminiAiService.testVlmConnection());
     }
 
     /**
@@ -414,8 +435,18 @@ public class WhatsAppWebhookController {
                 result = geminiAiService.analyzePrescriptionForReminders(fileBytes, mimeType, originalName);
             }
 
+            boolean isFallback = (result == null || result.medications() == null || result.medications().isEmpty());
+            LAST_DEBUG.put("timestamp", System.currentTimeMillis());
+            LAST_DEBUG.put("fromPhone", fromPhone);
+            LAST_DEBUG.put("mediaId", String.valueOf(mediaId));
+            LAST_DEBUG.put("mimeType", String.valueOf(mimeType));
+            LAST_DEBUG.put("fileBytesDownloaded", fileBytes != null ? fileBytes.length : 0);
+            LAST_DEBUG.put("isFallback", isFallback);
+            LAST_DEBUG.put("vlmError", geminiAiService.getLastVlmError());
+            LAST_DEBUG.put("downloadStatus", whatsAppClient.getLastDownloadStatus());
+
             // If analysis did not yield medications (or download was unavailable), apply standard clinical prescription schedule
-            if (result == null || result.medications() == null || result.medications().isEmpty()) {
+            if (isFallback) {
                 result = geminiAiService.generateFallbackPrescriptionResult(originalName);
             }
 

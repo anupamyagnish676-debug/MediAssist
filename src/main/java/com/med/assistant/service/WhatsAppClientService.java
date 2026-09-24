@@ -31,6 +31,9 @@ public class WhatsAppClientService {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
+    private volatile String lastDownloadStatus = "none";
+    public String getLastDownloadStatus() { return lastDownloadStatus; }
+
     public record ButtonOption(String id, String title) {}
 
 
@@ -182,14 +185,17 @@ public class WhatsAppClientService {
 
             if (downloadResp.statusCode() == 200) {
                 byte[] bytes = downloadResp.body();
+                this.lastDownloadStatus = "SUCCESS: " + (bytes != null ? bytes.length : 0) + " bytes (mediaId " + mediaId + ")";
                 logger.info("Successfully downloaded {} bytes for media ID: {}", bytes != null ? bytes.length : 0, mediaId);
                 return bytes;
             } else {
+                this.lastDownloadStatus = "FAILED_HTTP_" + downloadResp.statusCode() + " on CDN: " + new String(downloadResp.body());
                 logger.error("Failed to download media bytes. HTTP status {}: {}", downloadResp.statusCode(), new String(downloadResp.body()));
                 return null;
             }
 
         } catch (Exception e) {
+            this.lastDownloadStatus = "EXCEPTION: " + e.getMessage();
             logger.error("Failed to download WhatsApp media (ID: {}): {}", mediaId, e.getMessage(), e);
             return null;
         }
