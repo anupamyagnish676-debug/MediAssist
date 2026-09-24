@@ -4,9 +4,11 @@ import com.med.assistant.model.Appointment;
 import com.med.assistant.model.Doctor;
 import com.med.assistant.model.Hospital;
 import com.med.assistant.model.MedicalDocument;
+import com.med.assistant.model.PatientSession;
 import com.med.assistant.repository.AppointmentRepository;
 import com.med.assistant.repository.DoctorRepository;
 import com.med.assistant.repository.HospitalRepository;
+import com.med.assistant.repository.PatientSessionRepository;
 import com.med.assistant.service.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +41,7 @@ public class WhatsAppWebhookController {
     private final DoctorRepository doctorRepository;
     private final AppointmentRepository appointmentRepository;
     private final ExternalHospitalService externalHospitalService;
+    private final PatientSessionRepository patientSessionRepository;
     private final Map<String, String> userTriageDept = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, double[]> userLocation = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -51,7 +54,8 @@ public class WhatsAppWebhookController {
                                      HospitalRepository hospitalRepository,
                                      DoctorRepository doctorRepository,
                                      AppointmentRepository appointmentRepository,
-                                     ExternalHospitalService externalHospitalService) {
+                                     ExternalHospitalService externalHospitalService,
+                                     PatientSessionRepository patientSessionRepository) {
         this.whatsAppClient = whatsAppClient;
         this.locationService = locationService;
         this.geminiAiService = geminiAiService;
@@ -62,6 +66,7 @@ public class WhatsAppWebhookController {
         this.doctorRepository = doctorRepository;
         this.appointmentRepository = appointmentRepository;
         this.externalHospitalService = externalHospitalService;
+        this.patientSessionRepository = patientSessionRepository;
     }
 
     /**
@@ -127,6 +132,44 @@ public class WhatsAppWebhookController {
         }
     }
 
+    private double[] getOrRestoreUserLocation(String fromPhone) {
+        double[] loc = userLocation.get(fromPhone);
+        if (loc != null) {
+            return loc;
+        }
+        try {
+            var sessionOpt = patientSessionRepository.findByPhoneNumber(fromPhone);
+            if (sessionOpt.isPresent()) {
+                var s = sessionOpt.get();
+                if (s.getLatitude() != null && s.getLongitude() != null) {
+                    loc = new double[]{s.getLatitude(), s.getLongitude()};
+                    userLocation.put(fromPhone, loc);
+                    if (s.getPreferredDepartment() != null && !s.getPreferredDepartment().isBlank()) {
+                        userTriageDept.put(fromPhone, s.getPreferredDepartment());
+                    }
+                    return loc;
+                }
+            }
+        } catch (Exception ex) {
+            logger.warn("Could not retrieve patient session: {}", ex.getMessage());
+        }
+        return null;
+    }
+
+    private void saveUserSession(String fromPhone, Double lat, Double lon, String dept) {
+        try {
+            var opt = patientSessionRepository.findByPhoneNumber(fromPhone);
+            PatientSession session = opt.orElseGet(() -> new PatientSession(fromPhone, lat, lon, dept));
+            if (lat != null) session.setLatitude(lat);
+            if (lon != null) session.setLongitude(lon);
+            if (dept != null && !dept.isBlank()) session.setPreferredDepartment(dept);
+            session.setUpdatedAt(java.time.LocalDateTime.now());
+            patientSessionRepository.save(session);
+        } catch (Exception ex) {
+            logger.warn("Could not save patient session: {}", ex.getMessage());
+        }
+    }
+
     private void handleLocationMessage(String fromPhone, Map<String, Object> location) {
         double lat = ((Number) location.get("latitude")).doubleValue();
         double lon = ((Number) location.get("longitude")).doubleValue();
@@ -137,6 +180,8 @@ public class WhatsAppWebhookController {
         if (preferredDept == null || preferredDept.isBlank()) {
             preferredDept = "General Medicine";
         }
+
+        saveUserSession(fromPhone, lat, lon, preferredDept);
 
         String prompt = "🏥 *Hospital Discovery & Care Options*\n\n"
                 + "📍 GPS location received near your area.\n"
@@ -158,6 +203,7 @@ public class WhatsAppWebhookController {
     private void handleTextMessage(String fromPhone, Map<String, Object> textObj) {
         String body = (String) textObj.get("body");
         if (body == null) return;
+        String lower = body.toLowerCase().trim();
 
         // 1. Emergency red-flag check
         if (geminiAiService.isEmergency(body)) {
@@ -166,7 +212,7 @@ public class WhatsAppWebhookController {
         }
 
         // 2. Report Wardrobe retrieval request (e.g. "send me my blood report")
-        if (body.toLowerCase().contains("report") || body.toLowerCase().contains("wardrobe") || body.toLowerCase().contains("test")) {
+        if (lower.contains("report") || lower.contains("wardrobe") || lower.contains("test")) {
             List<MedicalDocument> found = wardrobeService.searchReports(fromPhone, body.replaceAll("(?i)(send|me|my|report|test|show)", "").trim());
             if (!found.isEmpty()) {
                 MedicalDocument doc = found.get(0);
@@ -175,8 +221,20 @@ public class WhatsAppWebhookController {
             }
         }
 
+        // 2b. Direct Hospital Discovery & Maps requests from text
+        if (lower.contains("nearby hospital") || lower.contains("nearby hospitals") || lower.contains("google map") 
+                || lower.contains("google maps") || lower.contains("find hospital") || lower.contains("hospitals near")
+                || lower.equals("maps") || lower.equals("map") || lower.equals("hospital") || lower.equals("hospitals")) {
+            handleDiscoverGoogleMaps(fromPhone);
+            return;
+        }
+        if (lower.contains("instant booking") || lower.contains("partner hospital") || lower.contains("partner clinic") 
+                || lower.contains("book token") || lower.contains("book opd")) {
+            handleDiscoverInstantBooking(fromPhone);
+            return;
+        }
+
         // 3. Medication Reminder Commands
-        String lower = body.toLowerCase().trim();
         if (lower.contains("reminder") || lower.contains("dawa") || lower.contains("remind me") || lower.contains("alarm")) {
             if (lower.contains("my reminder") || lower.contains("show reminder") || lower.contains("list reminder") 
                     || lower.contains("check reminder") || lower.contains("alarm") || lower.contains("my alarms") || lower.contains("schedule")) {
@@ -244,6 +302,7 @@ public class WhatsAppWebhookController {
         String detectedDept = detectSpecialty(body + " " + aiResponse);
         if (detectedDept != null) {
             userTriageDept.put(fromPhone, detectedDept);
+            saveUserSession(fromPhone, null, null, detectedDept);
         }
     }
 
@@ -398,7 +457,7 @@ public class WhatsAppWebhookController {
     }
 
     private void handleDiscoverInstantBooking(String fromPhone) {
-        double[] loc = userLocation.get(fromPhone);
+        double[] loc = getOrRestoreUserLocation(fromPhone);
         if (loc == null) {
             whatsAppClient.sendTextMessage(fromPhone, "📍 Please share your current location pin via WhatsApp first so we can find partner hospitals in your area!");
             return;
@@ -449,7 +508,7 @@ public class WhatsAppWebhookController {
     }
 
     private void handleDiscoverGoogleMaps(String fromPhone) {
-        double[] loc = userLocation.get(fromPhone);
+        double[] loc = getOrRestoreUserLocation(fromPhone);
         if (loc == null) {
             whatsAppClient.sendTextMessage(fromPhone, "📍 Please share your current location pin via WhatsApp first so we can find nearby hospitals on Google Maps!");
             return;
@@ -481,12 +540,15 @@ public class WhatsAppWebhookController {
         }
 
         String masterUrl = externalHospitalService.generateMasterGoogleMapsUrl(loc[0], loc[1], preferredDept);
-        sb.append("👉 *Open Complete Map on Google Maps:*\n").append(masterUrl).append("\n\n");
-        sb.append("💡 Want to book an instant OPD queue token with our local partner clinic? Tap *[⚡ Instant Booking]* anytime!");
+        sb.append("👉 *Open Complete Map on Google Maps:*\n").append(masterUrl);
 
+        // 1. Send full hospital list via standard text message (Meta limit is 4,096 chars - plenty of room)
+        whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+
+        // 2. Send follow-up interactive prompt with button (concise, safely within 1024 char limit)
         whatsAppClient.sendInteractiveButtons(
                 fromPhone,
-                sb.toString(),
+                "💡 Would you like to book an instant OPD queue token with our local partner clinic?",
                 List.of(new WhatsAppClientService.ButtonOption("DISCOVER_INSTANT", "⚡ Instant Booking"))
         );
     }

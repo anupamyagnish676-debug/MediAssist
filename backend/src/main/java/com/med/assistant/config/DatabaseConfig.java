@@ -129,6 +129,9 @@ public class DatabaseConfig {
                 stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;");
                 stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;");
                 stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;");
+
+                // Patient sessions table
+                stmt.execute("CREATE TABLE IF NOT EXISTS patient_sessions (phone_number VARCHAR(255) PRIMARY KEY, latitude DOUBLE PRECISION, longitude DOUBLE PRECISION, preferred_department VARCHAR(255), updated_at TIMESTAMP);");
                 logger.info("PostgreSQL schema migrations executed successfully!");
             }
         } catch (Exception e) {

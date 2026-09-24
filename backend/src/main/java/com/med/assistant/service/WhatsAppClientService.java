@@ -41,6 +41,11 @@ public class WhatsAppClientService {
      * Send Quick-Reply Interactive Buttons (e.g. [Taken] [Snooze], or Doctor Selection).
      */
     public void sendInteractiveButtons(String toPhone, String bodyText, List<ButtonOption> buttons) {
+        if (bodyText != null && bodyText.length() > 1020) {
+            logger.warn("sendInteractiveButtons: bodyText exceeded 1020 chars (length={}). Truncating to avoid Meta API error 100.", bodyText.length());
+            bodyText = bodyText.substring(0, 1017) + "...";
+        }
+
         List<Map<String, Object>> buttonList = new ArrayList<>();
         for (ButtonOption btn : buttons) {
             buttonList.add(Map.of(
@@ -70,6 +75,11 @@ public class WhatsAppClientService {
      */
     public void sendInteractiveList(String toPhone, String title, String bodyText, String buttonText,
                                     List<Map<String, String>> rows) {
+        if (bodyText != null && bodyText.length() > 1020) {
+            logger.warn("sendInteractiveList: bodyText exceeded 1020 chars (length={}). Truncating to avoid Meta API error 100.", bodyText.length());
+            bodyText = bodyText.substring(0, 1017) + "...";
+        }
+
         Map<String, Object> section = Map.of(
                 "title", title,
                 "rows", rows
