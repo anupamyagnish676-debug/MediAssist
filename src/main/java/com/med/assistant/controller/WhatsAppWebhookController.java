@@ -137,6 +137,41 @@ public class WhatsAppWebhookController {
     }
 
     /**
+     * Diagnostic endpoint: Inspect available Google models for this API key.
+     */
+    @GetMapping("/available-models")
+    public ResponseEntity<Map<String, Object>> getAvailableModels() {
+        List<String> models = geminiAiService.getAvailableModels();
+        return ResponseEntity.ok(Map.of(
+                "modelsCount", models.size(),
+                "models", models,
+                "lastVlmError", geminiAiService.getLastVlmError()
+        ));
+    }
+
+    /**
+     * Diagnostic endpoint: Test prescription analysis directly with an uploaded image.
+     */
+    @PostMapping("/test-analyze-image")
+    public ResponseEntity<Map<String, Object>> testAnalyzeImage(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        try {
+            byte[] bytes = file.getBytes();
+            String mime = file.getContentType() != null ? file.getContentType() : "image/jpeg";
+            String name = file.getOriginalFilename() != null ? file.getOriginalFilename() : "prescription.jpg";
+            GeminiAiService.PrescriptionAnalysisResult res = geminiAiService.analyzePrescriptionForReminders(bytes, mime, name);
+            Map<String, Object> map = new HashMap<>();
+            map.put("success", res != null && res.medications() != null && !res.medications().isEmpty());
+            map.put("lastVlmError", geminiAiService.getLastVlmError());
+            map.put("doctorNotes", res != null ? res.doctorNotes() : null);
+            map.put("medications", res != null ? res.medications() : null);
+            map.put("rawSummary", res != null ? res.rawSummary() : null);
+            return ResponseEntity.ok(map);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
      * Diagnostic endpoint: Test Gemini VLM image recognition on a real image.
      */
     @GetMapping("/test-vlm")
@@ -445,9 +480,30 @@ public class WhatsAppWebhookController {
             LAST_DEBUG.put("vlmError", geminiAiService.getLastVlmError());
             LAST_DEBUG.put("downloadStatus", whatsAppClient.getLastDownloadStatus());
 
-            // If analysis did not yield medications (or download was unavailable), apply standard clinical prescription schedule
+            // If analysis did not yield medications (or download was unavailable)
             if (isFallback) {
-                result = geminiAiService.generateFallbackPrescriptionResult(originalName);
+                // Safely archive to patient's Report Wardrobe even if analysis failed
+                try {
+                    if (fileBytes != null && fileBytes.length > 0) {
+                        wardrobeService.storeDocument(fromPhone, fileBytes, originalName, mimeType);
+                    }
+                } catch (Exception we) {
+                    logger.warn("Could not save document to Report Wardrobe: {}", we.getMessage());
+                }
+
+                whatsAppClient.sendTextMessage(fromPhone, """
+                    ⚠️ *Prescription Analysis Notice:*
+                    We received your document, but were unable to read the medications clearly with Gemini Vision AI (Google AI services may be experiencing high demand or handwriting was unclear).
+                    
+                    👉 *How to set your reminders:*
+                    1. Try sending a closer, clearer photo of the prescription.
+                    2. Or set them manually right now by messaging:
+                       👉 *"Remind me to take [Medicine] at [Time]"*
+                       (e.g., _"Remind me to take Rozad at 7:00 AM"_)
+                    
+                    📁 Your document has been safely stored in your *Report Wardrobe*.
+                    """);
+                return;
             }
 
             // Create reminder alarms for the patient
@@ -502,27 +558,12 @@ public class WhatsAppWebhookController {
 
         } catch (Exception e) {
             logger.error("Error processing prescription document: {}", e.getMessage(), e);
-            // Even if an unexpected error occurs, ensure patient gets default alarms scheduled!
-            try {
-                var fallback = geminiAiService.generateFallbackPrescriptionResult("Prescription");
-                for (var m : fallback.medications()) {
-                    for (var t : m.reminderTimes()) {
-                        reminderService.createReminder(fromPhone, m.name(), m.dosage(), t);
-                    }
-                }
-                whatsAppClient.sendTextMessage(fromPhone, """
-                    📋 *Prescription Received & Alarms Set!*
-                    
-                    ⏰ We have scheduled your daily medication reminders:
-                    • 💊 *Paracetamol 650mg* at 08:00, 20:00 IST
-                    • 💊 *Pantoprazole 40mg* at 07:30 IST
-                    • 💊 *Multivitamin* at 13:30 IST
-                    
-                    You will receive interactive alerts with [Taken] and [Snooze] buttons. Message *'my reminders'* anytime!
-                    """);
-            } catch (Exception fallbackEx) {
-                whatsAppClient.sendTextMessage(fromPhone, "⚠️ We received your document. You can set medication alarms anytime by messaging:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
-            }
+            whatsAppClient.sendTextMessage(fromPhone, """
+                ⚠️ We received your document, but encountered an error processing it.
+                
+                You can set medication alarms anytime by messaging:
+                👉 *"Remind me to take [Medicine] at [Time]"*
+                """);
         }
     }
 

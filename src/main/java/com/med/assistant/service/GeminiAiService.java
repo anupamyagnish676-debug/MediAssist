@@ -17,9 +17,12 @@ public class GeminiAiService {
 
     private static final Logger logger = LoggerFactory.getLogger(GeminiAiService.class);
 
-    private static final String[] CANDIDATE_MODELS = {
-            "gemini-3.6-flash"
-    };
+    private static final List<String> DEFAULT_CANDIDATE_MODELS = List.of(
+            "gemini-3.6-flash",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash"
+    );
 
     public record PrescribedMedication(String name, String dosage, List<String> reminderTimes) {}
 
@@ -39,6 +42,61 @@ public class GeminiAiService {
 
     private volatile String lastVlmError = "none";
     public String getLastVlmError() { return lastVlmError; }
+
+    private volatile List<String> cachedAvailableModels = null;
+    private volatile long lastModelFetchTime = 0L;
+
+    /**
+     * Dynamically discovers all models available for the configured Google Gemini API key.
+     */
+    public synchronized List<String> getAvailableModels() {
+        if (cachedAvailableModels != null && (System.currentTimeMillis() - lastModelFetchTime < 300_000)) {
+            return cachedAvailableModels;
+        }
+        List<String> discovered = new ArrayList<>();
+        if (geminiApiKey != null && !geminiApiKey.isBlank() && !geminiApiKey.contains("mock")) {
+            try {
+                String endpoint = "https://generativelanguage.googleapis.com/v1beta/models?key=" + geminiApiKey.trim();
+                Map res = restTemplate.getForObject(endpoint, Map.class);
+                if (res != null && res.containsKey("models")) {
+                    List<Map> models = (List<Map>) res.get("models");
+                    for (Map m : models) {
+                        String name = (String) m.get("name");
+                        List methods = (List) m.get("supportedGenerationMethods");
+                        if (name != null && methods != null && methods.contains("generateContent")) {
+                            String clean = name.replace("models/", "");
+                            if (!clean.contains("embedding") && !clean.contains("aqa")) {
+                                discovered.add(clean);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Could not query Google models list: {}", e.getMessage());
+            }
+        }
+
+        List<String> prioritized = new ArrayList<>();
+        // 1. Try gemini-3.6-flash first
+        if (discovered.contains("gemini-3.6-flash")) prioritized.add("gemini-3.6-flash");
+        // 2. Add other flash models
+        for (String m : discovered) {
+            if (!prioritized.contains(m) && m.contains("flash")) prioritized.add(m);
+        }
+        // 3. Add any remaining models
+        for (String m : discovered) {
+            if (!prioritized.contains(m)) prioritized.add(m);
+        }
+
+        // If Google API discovery failed or returned empty, use defaults
+        if (prioritized.isEmpty()) {
+            prioritized.addAll(DEFAULT_CANDIDATE_MODELS);
+        }
+
+        this.cachedAvailableModels = prioritized;
+        this.lastModelFetchTime = System.currentTimeMillis();
+        return prioritized;
+    }
 
     // Deterministic safety patterns for red flags
     private static final Pattern RED_FLAGS = Pattern.compile(
@@ -73,7 +131,7 @@ public class GeminiAiService {
     }
 
     /**
-     * Medical Triage & Conversation with strict disclaimers and language auto-matching.
+     * Medical Triage & Conversation with strict disclaimers, language auto-matching, and retry on 503/429.
      */
     public String askMedicalAi(String userQuery, String conversationContext) {
         if (isEmergency(userQuery)) {
@@ -98,18 +156,31 @@ public class GeminiAiService {
         Map<String, Object> content = Map.of("parts", List.of(textPart));
         Map<String, Object> requestBody = Map.of("contents", List.of(content));
 
-        for (String candidate : CANDIDATE_MODELS) {
-            try {
-                String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
-                HttpHeaders headers = new HttpHeaders();
-                headers.setContentType(MediaType.APPLICATION_JSON);
-                HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-                ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-                this.modelName = candidate; // Cache working model
-                return extractTextFromGeminiResponse(response.getBody());
-            } catch (Exception e) {
-                logger.warn("Model {} failed ({}), trying next candidate...", candidate, e.getMessage());
+        List<String> candidates = getAvailableModels();
+        for (String candidate : candidates) {
+            int maxRetries = 3;
+            for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                try {
+                    String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                    ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                    this.modelName = candidate;
+                    return extractTextFromGeminiResponse(response.getBody());
+                } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                    int code = e.getStatusCode().value();
+                    logger.warn("Triage candidate {} attempt {} failed: HTTP {}", candidate, attempt, code);
+                    if ((code == 503 || code == 429) && attempt < maxRetries) {
+                        try { Thread.sleep(attempt * 1000L); } catch (InterruptedException ignored) {}
+                        continue;
+                    }
+                    break;
+                } catch (Exception e) {
+                    logger.warn("Model {} failed ({}), trying next candidate...", candidate, e.getMessage());
+                    break;
+                }
             }
         }
         return generateMockTriageResponse(userQuery);
@@ -132,21 +203,33 @@ public class GeminiAiService {
         Map<String, Object> requestBody = Map.of("contents", List.of(content));
 
         List<String> errors = new ArrayList<>();
-        for (String candidate : CANDIDATE_MODELS) {
-            try {
-                String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
-                HttpHeaders headers = new HttpHeaders();
-                headers.setContentType(MediaType.APPLICATION_JSON);
-                HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        List<String> candidates = getAvailableModels();
+        for (String candidate : candidates) {
+            for (int attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                    HttpHeaders headers = new HttpHeaders();
+                    headers.setContentType(MediaType.APPLICATION_JSON);
+                    HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-                ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-                String text = extractTextFromGeminiResponse(response.getBody());
-                result.put("status", "SUCCESS");
-                result.put("workingModel", candidate);
-                result.put("aiOutput", text);
-                return result;
-            } catch (Exception e) {
-                errors.add(candidate + ": " + e.getMessage());
+                    ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                    String text = extractTextFromGeminiResponse(response.getBody());
+                    result.put("status", "SUCCESS");
+                    result.put("workingModel", candidate);
+                    result.put("aiOutput", text);
+                    return result;
+                } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                    int code = e.getStatusCode().value();
+                    errors.add(candidate + " (attempt " + attempt + " HTTP " + code + "): " + e.getResponseBodyAsString());
+                    if ((code == 503 || code == 429) && attempt < 3) {
+                        try { Thread.sleep(attempt * 1000L); } catch (InterruptedException ignored) {}
+                        continue;
+                    }
+                    break;
+                } catch (Exception e) {
+                    errors.add(candidate + ": " + e.getMessage());
+                    break;
+                }
             }
         }
         result.put("status", "FAILED_CALLING_GOOGLE");
@@ -156,7 +239,7 @@ public class GeminiAiService {
 
     /**
      * Multimodal VLM: Detects prescription from image/document, extracts medications, dosages,
-     * and automatically schedules reminder alarm times.
+     * and automatically schedules reminder alarm times with exponential backoff on 503/429.
      */
     public PrescriptionAnalysisResult analyzePrescriptionForReminders(byte[] fileBytes, String mimeType, String fileName) {
         if (geminiApiKey != null && !geminiApiKey.isBlank() && !geminiApiKey.contains("mock") && fileBytes != null && fileBytes.length > 0) {
@@ -176,31 +259,31 @@ public class GeminiAiService {
 
                 String prompt = """
                     You are an expert clinical AI Pharmacist and Vision Assistant.
-                    Analyze this uploaded doctor prescription or medication order image/document.
+                    Analyze this uploaded doctor prescription or medical order image/document.
                     
                     TASKS:
                     1. Read the doctor's handwriting or printed text carefully.
-                    2. Extract the diagnosis, doctor/hospital name, or clinical advice if present.
-                    3. Extract EVERY prescribed medicine along with its strength (e.g., 'Paracetamol 650mg', 'Amoxicillin 500mg', 'Pantoprazole 40mg').
-                    4. Extract dosage instructions (e.g., '1 tablet after food', 'before breakfast', 'twice daily').
-                    5. Automatically deduce optimal daily reminder times (in 24-hour HH:mm format, IST):
-                       - Morning / After breakfast / OD: "08:00"
-                       - Afternoon / After lunch: "13:30"
-                       - Evening / Snacks: "18:00"
-                       - Night / Bedtime / HS: "21:00"
-                       - Twice daily (BD / BID / 1-0-1): ["08:00", "20:00"]
-                       - Thrice daily (TDS / TID / 1-1-1): ["08:00", "14:00", "20:00"]
-                       - Before breakfast / Empty stomach: "07:30"
+                    2. Identify doctor/hospital details, patient name, and diagnosis/complaints (e.g. Anxiety, Gastric, BP).
+                    3. Extract EVERY prescribed medicine with its form, name and strength (e.g. 'Cap. Rozad', 'Tab. Ambulax', 'Tab. Petril Plus', 'Tab. Placida', 'Tab. Esojet 40').
+                    4. Extract dosage instructions and frequency (e.g. '1 OD AC 7 AM', '1 BD', '1 OD HS', '1 OD 6 PM').
+                    5. Deduce specific daily reminder times (24-hour format HH:mm, IST):
+                       - Explicit times written on prescription: "7 AM" -> "07:00", "6 PM" -> "18:00"
+                       - OD AC / Before Breakfast / Empty Stomach -> "07:00"
+                       - OD (Once Daily / Morning) -> "08:00"
+                       - BD / Twice Daily -> ["08:00", "20:00"]
+                       - TDS / Thrice Daily -> ["08:00", "14:00", "20:00"]
+                       - HS / Bedtime / Night -> "21:30"
+                       - Afternoon / Post Lunch -> "13:30"
                     
                     OUTPUT FORMAT:
-                    You MUST reply strictly with a JSON object (no markdown, no backticks, no comments) matching:
+                    Respond ONLY with a valid JSON object (no markdown, no backticks, no comments) matching:
                     {
-                      "doctorNotes": "Short clinical notes or diagnosis on the prescription",
+                      "doctorNotes": "Diagnosis, doctor name, and patient details from prescription",
                       "medications": [
                         {
                           "name": "Medication Name and Strength",
-                          "dosage": "Dosage instructions and frequency",
-                          "times": ["08:00", "20:00"]
+                          "dosage": "Dosage frequency and instructions",
+                          "times": ["07:00", "18:00"]
                         }
                       ]
                     }
@@ -208,43 +291,71 @@ public class GeminiAiService {
 
                 Map<String, Object> textPart = Map.of("text", prompt);
                 Map<String, Object> content = Map.of("parts", List.of(textPart, imagePart));
-                Map<String, Object> requestBody = Map.of("contents", List.of(content));
+                Map<String, Object> requestBody = Map.of(
+                        "contents", List.of(content),
+                        "generationConfig", Map.of(
+                                "temperature", 0.1,
+                                "responseMimeType", "application/json"
+                        )
+                );
 
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
                 HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-                for (String candidate : CANDIDATE_MODELS) {
-                    try {
-                        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
-                        ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-                        String rawText = extractTextFromGeminiResponse(response.getBody());
+                List<String> candidates = getAvailableModels();
+                StringBuilder errorSummary = new StringBuilder();
 
-                        if (rawText != null && !rawText.isBlank()) {
-                            PrescriptionAnalysisResult parsed = parsePrescriptionJson(rawText);
-                            if (parsed != null && parsed.medications() != null && !parsed.medications().isEmpty()) {
-                                this.modelName = candidate;
-                                this.lastVlmError = "SUCCESS (model " + candidate + ")";
-                                logger.info("Successfully analyzed prescription using Gemini VLM model {}", candidate);
-                                return parsed;
+                for (String candidate : candidates) {
+                    int maxRetries = 3;
+                    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+                        try {
+                            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                            ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                            String rawText = extractTextFromGeminiResponse(response.getBody());
+
+                            if (rawText != null && !rawText.isBlank()) {
+                                PrescriptionAnalysisResult parsed = parsePrescriptionJson(rawText);
+                                if (parsed != null && parsed.medications() != null && !parsed.medications().isEmpty()) {
+                                    this.modelName = candidate;
+                                    this.lastVlmError = "SUCCESS (model " + candidate + " on attempt " + attempt + ")";
+                                    logger.info("Successfully analyzed prescription using Gemini VLM model {} on attempt {}", candidate, attempt);
+                                    return parsed;
+                                } else {
+                                    errorSummary.append(candidate).append(" attempt ").append(attempt).append(" parsed empty; ");
+                                }
                             }
+                            break; // Got response from this candidate, proceed or next model
+                        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                            int code = e.getStatusCode().value();
+                            String body = e.getResponseBodyAsString();
+                            errorSummary.append(candidate).append(" a").append(attempt).append(" HTTP ").append(code).append("; ");
+                            this.lastVlmError = candidate + " (HTTP " + code + "): " + body;
+                            logger.warn("Prescription VLM candidate {} attempt {} failed: HTTP {}", candidate, attempt, code);
+                            if ((code == 503 || code == 429) && attempt < maxRetries) {
+                                try {
+                                    Thread.sleep(attempt * 1200L); // 1.2s, 2.4s backoff
+                                } catch (InterruptedException ignored) {}
+                                continue; // retry same model
+                            }
+                            break; // try next candidate model
+                        } catch (Exception e) {
+                            errorSummary.append(candidate).append(": ").append(e.getMessage()).append("; ");
+                            this.lastVlmError = candidate + ": " + e.getMessage();
+                            logger.warn("Prescription VLM candidate {} failed: {}", candidate, e.getMessage());
+                            break;
                         }
-                    } catch (org.springframework.web.client.HttpStatusCodeException e) {
-                        this.lastVlmError = candidate + " (HTTP " + e.getStatusCode() + "): " + e.getResponseBodyAsString();
-                        logger.warn("Prescription VLM candidate {} failed: {}", candidate, this.lastVlmError);
-                    } catch (Exception e) {
-                        this.lastVlmError = candidate + ": " + e.getMessage();
-                        logger.warn("Prescription VLM candidate {} failed: {}", candidate, e.getMessage());
                     }
                 }
+                this.lastVlmError = "All candidates failed: " + errorSummary;
             } catch (Exception e) {
                 this.lastVlmError = "Exception: " + e.getMessage();
                 logger.error("Error during Gemini prescription VLM analysis: {}", e.getMessage(), e);
             }
         }
 
-        // Fallback clinical standard extractor
-        return generateFallbackPrescriptionResult(fileName);
+        // Return null so caller knows VLM could not extract medications
+        return null;
     }
 
     public Map<String, Object> testVlmConnection() {
@@ -276,17 +387,32 @@ public class GeminiAiService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" + geminiApiKey.trim();
-            ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-            String rawText = extractTextFromGeminiResponse(response.getBody());
+            List<String> candidates = getAvailableModels();
+            for (String candidate : candidates) {
+                for (int attempt = 1; attempt <= 3; attempt++) {
+                    try {
+                        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                        ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                        String rawText = extractTextFromGeminiResponse(response.getBody());
 
-            result.put("status", "SUCCESS");
-            result.put("vlmRawResponse", rawText);
-            return result;
-        } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            result.put("status", "HTTP_ERROR");
-            result.put("httpStatus", e.getStatusCode().value());
-            result.put("errorBody", e.getResponseBodyAsString());
+                        result.put("status", "SUCCESS");
+                        result.put("workingModel", candidate);
+                        result.put("vlmRawResponse", rawText);
+                        return result;
+                    } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                        int code = e.getStatusCode().value();
+                        if ((code == 503 || code == 429) && attempt < 3) {
+                            try { Thread.sleep(attempt * 1000L); } catch (InterruptedException ignored) {}
+                            continue;
+                        }
+                        break;
+                    } catch (Exception e) {
+                        break;
+                    }
+                }
+            }
+            result.put("status", "FAILED_CALLING_GOOGLE");
+            result.put("lastVlmError", lastVlmError);
             return result;
         } catch (Exception e) {
             result.put("status", "EXCEPTION");
@@ -295,7 +421,42 @@ public class GeminiAiService {
         }
     }
 
-    private PrescriptionAnalysisResult parsePrescriptionJson(String rawText) {
+    public String normalizeTime(String rawTime) {
+        if (rawTime == null || rawTime.isBlank()) return "08:00";
+        String t = rawTime.trim().toUpperCase();
+
+        // 12-hour AM/PM pattern like "7 AM", "7:00 AM", "6 PM", "6:30 PM", "9.30 PM"
+        java.util.regex.Matcher m12 = java.util.regex.Pattern.compile("(\\d{1,2})(?:[:.](\\d{2}))?\\s*(AM|PM)").matcher(t);
+        if (m12.find()) {
+            int h = Integer.parseInt(m12.group(1));
+            int min = (m12.group(2) != null) ? Integer.parseInt(m12.group(2)) : 0;
+            String ampm = m12.group(3);
+            if ("PM".equalsIgnoreCase(ampm) && h < 12) h += 12;
+            if ("AM".equalsIgnoreCase(ampm) && h == 12) h = 0;
+            return String.format("%02d:%02d", Math.min(Math.max(h, 0), 23), Math.min(Math.max(min, 0), 59));
+        }
+
+        // 24-hour pattern like "07:00", "7:00", "18:00", "21:30"
+        java.util.regex.Matcher m24 = java.util.regex.Pattern.compile("(\\d{1,2})[:.](\\d{2})").matcher(t);
+        if (m24.find()) {
+            int h = Integer.parseInt(m24.group(1));
+            int min = Integer.parseInt(m24.group(2));
+            return String.format("%02d:%02d", Math.min(Math.max(h, 0), 23), Math.min(Math.max(min, 0), 59));
+        }
+
+        // Standalone hour like "7", "18", "21"
+        if (t.matches("^\\d{1,2}$")) {
+            int h = Integer.parseInt(t);
+            if (h >= 0 && h <= 23) {
+                return String.format("%02d:00", h);
+            }
+        }
+
+        return "08:00";
+    }
+
+    public PrescriptionAnalysisResult parsePrescriptionJson(String rawText) {
+        if (rawText == null || rawText.isBlank()) return null;
         try {
             String clean = rawText.replaceAll("(?s)```json\\s*", "").replaceAll("```", "").trim();
             int start = clean.indexOf("{");
@@ -313,20 +474,37 @@ public class GeminiAiService {
             JsonNode medsNode = root.path("medications");
             if (medsNode.isArray()) {
                 for (JsonNode m : medsNode) {
-                    String name = m.path("name").asText("Medication");
-                    String dosage = m.path("dosage").asText("As directed");
+                    String name = m.path("name").asText("").trim();
+                    String dosage = m.path("dosage").asText("As directed").trim();
+                    if (name.isBlank()) continue;
+
                     List<String> times = new ArrayList<>();
                     JsonNode timesNode = m.path("times");
                     if (timesNode.isArray()) {
                         for (JsonNode t : timesNode) {
                             String tStr = t.asText().trim();
-                            if (tStr.matches("\\d{1,2}:\\d{2}")) {
-                                if (tStr.length() == 4) tStr = "0" + tStr;
-                                times.add(tStr);
+                            if (!tStr.isBlank()) {
+                                times.add(normalizeTime(tStr));
                             }
                         }
                     }
-                    if (times.isEmpty()) times.add("08:00");
+                    if (times.isEmpty()) {
+                        String dLower = dosage.toLowerCase();
+                        if (dLower.contains("bd") || dLower.contains("twice") || dLower.contains("1-0-1")) {
+                            times.add("08:00");
+                            times.add("20:00");
+                        } else if (dLower.contains("hs") || dLower.contains("night") || dLower.contains("bedtime")) {
+                            times.add("21:30");
+                        } else if (dLower.contains("tds") || dLower.contains("thrice") || dLower.contains("1-1-1")) {
+                            times.add("08:00");
+                            times.add("14:00");
+                            times.add("20:00");
+                        } else if (dLower.contains("ac") || dLower.contains("empty stomach") || dLower.contains("before breakfast")) {
+                            times.add("07:00");
+                        } else {
+                            times.add("08:00");
+                        }
+                    }
                     meds.add(new PrescribedMedication(name, dosage, times));
                 }
             }
@@ -398,14 +576,25 @@ public class GeminiAiService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-            for (String candidate : CANDIDATE_MODELS) {
-                try {
-                    String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
-                    ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-                    this.modelName = candidate;
-                    return extractTextFromGeminiResponse(response.getBody());
-                } catch (Exception ex) {
-                    logger.warn("Model {} failed for report analysis: {}", candidate, ex.getMessage());
+            List<String> candidates = getAvailableModels();
+            for (String candidate : candidates) {
+                for (int attempt = 1; attempt <= 3; attempt++) {
+                    try {
+                        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                        ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                        this.modelName = candidate;
+                        return extractTextFromGeminiResponse(response.getBody());
+                    } catch (org.springframework.web.client.HttpStatusCodeException ex) {
+                        int code = ex.getStatusCode().value();
+                        if ((code == 503 || code == 429) && attempt < 3) {
+                            try { Thread.sleep(attempt * 1000L); } catch (InterruptedException ignored) {}
+                            continue;
+                        }
+                        break;
+                    } catch (Exception ex) {
+                        logger.warn("Model {} failed for report analysis: {}", candidate, ex.getMessage());
+                        break;
+                    }
                 }
             }
             return "Document received and safely archived in your Report Wardrobe.";
