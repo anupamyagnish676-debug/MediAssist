@@ -58,6 +58,37 @@ public class LocationService {
     }
 
     /**
+     * Finds local partner hospitals within radius (default <= 25 km) that have a matching department or doctor.
+     */
+    public List<NearbyHospitalResult> findLocalHospitalsByDepartment(double userLat, double userLon, double maxRadiusKm, String department) {
+        List<Hospital> allHospitals = hospitalRepository.findByActiveTrue();
+
+        return allHospitals.stream()
+                .map(h -> {
+                    double dist = calculateDistanceKm(userLat, userLon, h.getLatitude(), h.getLongitude());
+                    int availableDocs = (int) h.getDoctors().stream()
+                            .filter(com.med.assistant.model.Doctor::isAvailableToday)
+                            .count();
+                    return new NearbyHospitalResult(h, dist, availableDocs);
+                })
+                .filter(res -> res.distanceKm() <= maxRadiusKm)
+                .filter(res -> {
+                    if (department == null || department.isBlank() || department.equalsIgnoreCase("General Medicine")) {
+                        return true;
+                    }
+                    Hospital h = res.hospital();
+                    boolean docMatch = h.getDoctors().stream().anyMatch(d ->
+                            d.getDepartment() != null && d.getDepartment().toLowerCase().contains(department.toLowerCase())
+                    );
+                    boolean specMatch = h.getSpecialties() != null && h.getSpecialties().toLowerCase().contains(department.toLowerCase());
+                    return docMatch || specMatch;
+                })
+                .sorted(Comparator.comparingDouble(NearbyHospitalResult::distanceKm))
+                .limit(5)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Calculates nearby hospitals within a radius using Haversine formula.
      * Works seamlessly across both H2 (local testing) and PostgreSQL.
      */
