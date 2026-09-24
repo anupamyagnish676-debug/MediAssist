@@ -18,10 +18,11 @@ public class GeminiAiService {
     private static final Logger logger = LoggerFactory.getLogger(GeminiAiService.class);
 
     private static final List<String> DEFAULT_CANDIDATE_MODELS = List.of(
+            "gemini-flash-lite-latest",
             "gemini-3.6-flash",
-            "gemini-2.5-flash",
-            "gemini-2.0-flash",
-            "gemini-1.5-flash"
+            "gemini-flash-latest",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash-lite"
     );
 
     public record PrescribedMedication(String name, String dosage, List<String> reminderTimes) {}
@@ -35,7 +36,7 @@ public class GeminiAiService {
     @Value("${app.ai.gemini.api-key:}")
     private String geminiApiKey;
 
-    @Value("${app.ai.gemini.model:gemini-3.6-flash}")
+    @Value("${app.ai.gemini.model:gemini-flash-lite-latest}")
     private String modelName;
 
     private final RestTemplate restTemplate = new RestTemplate();
@@ -47,7 +48,8 @@ public class GeminiAiService {
     private volatile long lastModelFetchTime = 0L;
 
     /**
-     * Dynamically discovers all models available for the configured Google Gemini API key.
+     * Dynamically discovers all models available for the configured Google Gemini API key,
+     * filtering for vision-capable models and prioritizing fast lite models.
      */
     public synchronized List<String> getAvailableModels() {
         if (cachedAvailableModels != null && (System.currentTimeMillis() - lastModelFetchTime < 300_000)) {
@@ -65,7 +67,12 @@ public class GeminiAiService {
                         List methods = (List) m.get("supportedGenerationMethods");
                         if (name != null && methods != null && methods.contains("generateContent")) {
                             String clean = name.replace("models/", "");
-                            if (!clean.contains("embedding") && !clean.contains("aqa")) {
+                            String lower = clean.toLowerCase();
+                            // Filter out non-vision, audio, TTS, and internal preview models
+                            if (!lower.contains("embedding") && !lower.contains("aqa") &&
+                                !lower.contains("tts") && !lower.contains("transcribe") &&
+                                !lower.contains("clip") && !lower.contains("robotics") &&
+                                !lower.contains("er-2") && !lower.contains("banana")) {
                                 discovered.add(clean);
                             }
                         }
@@ -77,8 +84,21 @@ public class GeminiAiService {
         }
 
         List<String> prioritized = new ArrayList<>();
-        // 1. Try gemini-3.6-flash first
-        if (discovered.contains("gemini-3.6-flash")) prioritized.add("gemini-3.6-flash");
+        // 1. Prioritize ultra-fast, high-availability multimodal flash-lite models
+        List<String> topPicks = List.of(
+                "gemini-flash-lite-latest",
+                "gemini-3.6-flash",
+                "gemini-flash-latest",
+                "gemini-3.1-flash-lite",
+                "gemini-3.5-flash-lite",
+                "gemini-3.8-flash",
+                "gemini-3.7-flash"
+        );
+        for (String pick : topPicks) {
+            if (discovered.contains(pick) && !prioritized.contains(pick)) {
+                prioritized.add(pick);
+            }
+        }
         // 2. Add other flash models
         for (String m : discovered) {
             if (!prioritized.contains(m) && m.contains("flash")) prioritized.add(m);
@@ -131,7 +151,7 @@ public class GeminiAiService {
     }
 
     /**
-     * Medical Triage & Conversation with strict disclaimers, language auto-matching, and retry on 503/429.
+     * Medical Triage & Conversation with strict disclaimers, language auto-matching, and instant model failover.
      */
     public String askMedicalAi(String userQuery, String conversationContext) {
         if (isEmergency(userQuery)) {
@@ -162,25 +182,15 @@ public class GeminiAiService {
 
         List<String> candidates = getAvailableModels();
         for (String candidate : candidates) {
-            int maxRetries = 3;
-            for (int attempt = 1; attempt <= maxRetries; attempt++) {
-                try {
-                    String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
-                    ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-                    this.modelName = candidate;
-                    return extractTextFromGeminiResponse(response.getBody());
-                } catch (org.springframework.web.client.HttpStatusCodeException e) {
-                    int code = e.getStatusCode().value();
-                    logger.warn("Triage candidate {} attempt {} failed: HTTP {}", candidate, attempt, code);
-                    if ((code == 503 || code == 429) && attempt < maxRetries) {
-                        try { Thread.sleep(attempt * 1000L); } catch (InterruptedException ignored) {}
-                        continue;
-                    }
-                    break;
-                } catch (Exception e) {
-                    logger.warn("Model {} failed ({}), trying next candidate...", candidate, e.getMessage());
-                    break;
-                }
+            try {
+                String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                this.modelName = candidate;
+                return extractTextFromGeminiResponse(response.getBody());
+            } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                logger.warn("Triage candidate {} failed (HTTP {}), pivoting to next candidate...", candidate, e.getStatusCode().value());
+            } catch (Exception e) {
+                logger.warn("Model {} failed ({}), trying next candidate...", candidate, e.getMessage());
             }
         }
         return generateMockTriageResponse(userQuery);
@@ -205,31 +215,23 @@ public class GeminiAiService {
         List<String> errors = new ArrayList<>();
         List<String> candidates = getAvailableModels();
         for (String candidate : candidates) {
-            for (int attempt = 1; attempt <= 3; attempt++) {
-                try {
-                    String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
-                    HttpHeaders headers = new HttpHeaders();
-                    headers.setContentType(MediaType.APPLICATION_JSON);
-                    HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+            try {
+                String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
 
-                    ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-                    String text = extractTextFromGeminiResponse(response.getBody());
-                    result.put("status", "SUCCESS");
-                    result.put("workingModel", candidate);
-                    result.put("aiOutput", text);
-                    return result;
-                } catch (org.springframework.web.client.HttpStatusCodeException e) {
-                    int code = e.getStatusCode().value();
-                    errors.add(candidate + " (attempt " + attempt + " HTTP " + code + "): " + e.getResponseBodyAsString());
-                    if ((code == 503 || code == 429) && attempt < 3) {
-                        try { Thread.sleep(attempt * 1000L); } catch (InterruptedException ignored) {}
-                        continue;
-                    }
-                    break;
-                } catch (Exception e) {
-                    errors.add(candidate + ": " + e.getMessage());
-                    break;
-                }
+                ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                String text = extractTextFromGeminiResponse(response.getBody());
+                result.put("status", "SUCCESS");
+                result.put("workingModel", candidate);
+                result.put("aiOutput", text);
+                return result;
+            } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                int code = e.getStatusCode().value();
+                errors.add(candidate + " (HTTP " + code + "): " + e.getResponseBodyAsString());
+            } catch (Exception e) {
+                errors.add(candidate + ": " + e.getMessage());
             }
         }
         result.put("status", "FAILED_CALLING_GOOGLE");
@@ -307,44 +309,31 @@ public class GeminiAiService {
                 StringBuilder errorSummary = new StringBuilder();
 
                 for (String candidate : candidates) {
-                    int maxRetries = 3;
-                    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-                        try {
-                            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
-                            ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-                            String rawText = extractTextFromGeminiResponse(response.getBody());
+                    try {
+                        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                        ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                        String rawText = extractTextFromGeminiResponse(response.getBody());
 
-                            if (rawText != null && !rawText.isBlank()) {
-                                PrescriptionAnalysisResult parsed = parsePrescriptionJson(rawText);
-                                if (parsed != null && parsed.medications() != null && !parsed.medications().isEmpty()) {
-                                    this.modelName = candidate;
-                                    this.lastVlmError = "SUCCESS (model " + candidate + " on attempt " + attempt + ")";
-                                    logger.info("Successfully analyzed prescription using Gemini VLM model {} on attempt {}", candidate, attempt);
-                                    return parsed;
-                                } else {
-                                    errorSummary.append(candidate).append(" attempt ").append(attempt).append(" parsed empty; ");
-                                }
+                        if (rawText != null && !rawText.isBlank()) {
+                            PrescriptionAnalysisResult parsed = parsePrescriptionJson(rawText);
+                            if (parsed != null && parsed.medications() != null && !parsed.medications().isEmpty()) {
+                                this.modelName = candidate;
+                                this.lastVlmError = "SUCCESS (model " + candidate + ")";
+                                logger.info("Successfully analyzed prescription using Gemini VLM model {}", candidate);
+                                return parsed;
+                            } else {
+                                errorSummary.append(candidate).append(" parsed empty; ");
                             }
-                            break; // Got response from this candidate, proceed or next model
-                        } catch (org.springframework.web.client.HttpStatusCodeException e) {
-                            int code = e.getStatusCode().value();
-                            String body = e.getResponseBodyAsString();
-                            errorSummary.append(candidate).append(" a").append(attempt).append(" HTTP ").append(code).append("; ");
-                            this.lastVlmError = candidate + " (HTTP " + code + "): " + body;
-                            logger.warn("Prescription VLM candidate {} attempt {} failed: HTTP {}", candidate, attempt, code);
-                            if ((code == 503 || code == 429) && attempt < maxRetries) {
-                                try {
-                                    Thread.sleep(attempt * 1200L); // 1.2s, 2.4s backoff
-                                } catch (InterruptedException ignored) {}
-                                continue; // retry same model
-                            }
-                            break; // try next candidate model
-                        } catch (Exception e) {
-                            errorSummary.append(candidate).append(": ").append(e.getMessage()).append("; ");
-                            this.lastVlmError = candidate + ": " + e.getMessage();
-                            logger.warn("Prescription VLM candidate {} failed: {}", candidate, e.getMessage());
-                            break;
                         }
+                    } catch (org.springframework.web.client.HttpStatusCodeException e) {
+                        int code = e.getStatusCode().value();
+                        errorSummary.append(candidate).append(" HTTP ").append(code).append("; ");
+                        this.lastVlmError = candidate + " (HTTP " + code + "): " + e.getResponseBodyAsString();
+                        logger.warn("Prescription VLM candidate {} failed: HTTP {}", candidate, code);
+                    } catch (Exception e) {
+                        errorSummary.append(candidate).append(": ").append(e.getMessage()).append("; ");
+                        this.lastVlmError = candidate + ": " + e.getMessage();
+                        logger.warn("Prescription VLM candidate {} failed: {}", candidate, e.getMessage());
                     }
                 }
                 this.lastVlmError = "All candidates failed: " + errorSummary;
@@ -389,26 +378,17 @@ public class GeminiAiService {
 
             List<String> candidates = getAvailableModels();
             for (String candidate : candidates) {
-                for (int attempt = 1; attempt <= 3; attempt++) {
-                    try {
-                        String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
-                        ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
-                        String rawText = extractTextFromGeminiResponse(response.getBody());
+                try {
+                    String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                    ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                    String rawText = extractTextFromGeminiResponse(response.getBody());
 
-                        result.put("status", "SUCCESS");
-                        result.put("workingModel", candidate);
-                        result.put("vlmRawResponse", rawText);
-                        return result;
-                    } catch (org.springframework.web.client.HttpStatusCodeException e) {
-                        int code = e.getStatusCode().value();
-                        if ((code == 503 || code == 429) && attempt < 3) {
-                            try { Thread.sleep(attempt * 1000L); } catch (InterruptedException ignored) {}
-                            continue;
-                        }
-                        break;
-                    } catch (Exception e) {
-                        break;
-                    }
+                    result.put("status", "SUCCESS");
+                    result.put("workingModel", candidate);
+                    result.put("vlmRawResponse", rawText);
+                    return result;
+                } catch (Exception e) {
+                    // Try next model immediately
                 }
             }
             result.put("status", "FAILED_CALLING_GOOGLE");
