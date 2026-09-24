@@ -163,13 +163,17 @@ public class GeminiAiService {
         }
 
         String systemInstruction = """
-            You are a compassionate, clinical AI Medical Assistant inside WhatsApp.
+            You are a compassionate, clinical Medical Health Desk triage assistant for the hospital WhatsApp service.
             GUIDELINES:
-            1. Always include a short disclaimer: 'I am an AI assistant, not a doctor.'
-            2. If the user speaks or writes in Hindi, Spanish, or any other vernacular, ALWAYS reply in that same language.
-            3. Never prescribe exact prescription-only dosages.
-            4. Give helpful preliminary home-care tips and advise which medical specialist to consult.
-            5. Keep WhatsApp replies clear, concise, and formatted with bullet points and friendly emojis.
+            1. Speak professionally as an accredited clinical triage desk. Never state or imply that you are an AI, bot, language model, or virtual assistant.
+            2. Always include a clinical notice at the end: 'Clinical Note: This preliminary guidance does not replace a formal in-person physical examination by a registered physician.'
+            3. If the user speaks or writes in Hindi, Spanish, or any other vernacular, ALWAYS reply in that same language.
+            4. Never prescribe exact prescription-only dosages.
+            5. Provide helpful preliminary home-care tips and clearly advise which specific medical department/specialist to consult (e.g. Cardiology, Orthopedics, Pediatrics, General Medicine, Dermatology, ENT, Gynecology, Neurology, Pulmonology, Gastroenterology).
+            6. At the end of your guidance, explicitly specify the recommended department in this format:
+               👨‍⚕️ *Recommended Department:* [Department Name]
+               📍 *Next Step:* Share your WhatsApp location pin 📍 to discover accredited partner hospitals and book your OPD queue token!
+            7. Keep WhatsApp replies clear, concise, and formatted with bullet points and friendly emojis.
             """;
 
         Map<String, Object> textPart = Map.of("text", systemInstruction + "\n\nUser: " + userQuery);
@@ -260,8 +264,8 @@ public class GeminiAiService {
                 Map<String, Object> imagePart = Map.of("inlineData", inlineData);
 
                 String prompt = """
-                    You are an expert clinical AI Pharmacist and Vision Assistant.
-                    Analyze this uploaded doctor prescription or medical order image/document.
+                    You are an expert Clinical Pharmacist and Medical Documentation Specialist.
+                    Review this uploaded doctor prescription or medical order image/document.
                     
                     TASKS:
                     1. Read the doctor's handwriting or printed text carefully.
@@ -622,12 +626,12 @@ public class GeminiAiService {
                     👨‍⚕️ *परामर्श विभाग:* जनरल फिजिशियन या न्यूरोलॉजिस्ट
                     📍 *टिप:* निकटतम अस्पताल और उपलब्ध डॉक्टर देखने के लिए अपनी लोकेशन पिन साझा करें!
 
-                    *(अस्वीकरण: मैं एक AI सहायक हूँ, डॉक्टर नहीं।)*
+                    *(चिकित्सीय सूचना: यह प्राथमिक मार्गदर्शन है, यह किसी चिकित्सक द्वारा प्रत्यक्ष जांच का विकल्प नहीं है।)*
                     """;
             }
             if (q.contains("bukhar") || q.contains("fever") || q.contains("tap")) {
                 return """
-                    🩺 *AI मेडिकल सहायक (परामर्श):*
+                    🩺 *क्लिनिकल स्वास्थ्य डेस्क (परामर्श):*
                     आपके बुखार के लिए प्राथमिक देखभाल सलाह:
 
                     • हर 4 से 6 घंटे में अपना तापमान मापें और नोट करें।
@@ -638,12 +642,12 @@ public class GeminiAiService {
                     👨‍⚕️ *परामर्श विभाग:* जनरल मेडिसिन / फिजिशियन
                     📍 *टिप:* निकटतम अस्पताल और उपलब्ध डॉक्टर देखने के लिए अपनी लोकेशन पिन साझा करें!
 
-                    *(अस्वीकरण: मैं एक AI सहायक हूँ, डॉक्टर नहीं।)*
+                    *(चिकित्सीय सूचना: यह प्राथमिक मार्गदर्शन है, यह किसी चिकित्सक द्वारा प्रत्यक्ष जांच का विकल्प नहीं है।)*
                     """;
             }
             if (q.contains("pet") || q.contains("stomach") || q.contains("gas") || q.contains("dast")) {
                 return """
-                    🩺 *AI मेडिकल सहायक (परामर्श):*
+                    🩺 *क्लिनिकल स्वास्थ्य डेस्क (परामर्श):*
                     पेट की समस्या के लिए प्राथमिक सलाह:
 
                     • हल्का और सुपाच्य भोजन (खिचड़ी, दही, छाछ) लें।
@@ -654,12 +658,12 @@ public class GeminiAiService {
                     👨‍⚕️ *परामर्श विभाग:* गैस्ट्रोएंटेरोलॉजिस्ट / जनरल फिजिशियन
                     📍 *टिप:* निकटतम अस्पताल और डॉक्टर देखने के लिए लोकेशन पिन भेजें!
 
-                    *(अस्वीकरण: मैं एक AI सहायक हूँ, डॉक्टर नहीं।)*
+                    *(चिकित्सीय सूचना: यह प्राथमिक मार्गदर्शन है, यह किसी चिकित्सक द्वारा प्रत्यक्ष जांच का विकल्प नहीं है।)*
                     """;
             }
             if (q.contains("khansi") || q.contains("cough") || q.contains("gala") || q.contains("cold")) {
                 return """
-                    🩺 *AI मेडिकल सहायक (परामर्श):*
+                    🩺 *क्लिनिकल स्वास्थ्य डेस्क (परामर्श):*
                     खांसी और जुकाम के लिए प्राथमिक सलाह:
 
                     • दिन में 2-3 बार गर्म पानी से नमक के गरारे (गार्गल) करें।
@@ -670,7 +674,7 @@ public class GeminiAiService {
                     👨‍⚕️ *परामर्श विभाग:* ईएनटी (ENT) या जनरल फिजिशियन
                     📍 *टिप:* अपने आस-पास के अस्पताल देखने के लिए लोकेशन पिन साझा करें!
 
-                    *(अस्वीकरण: मैं एक AI सहायक हूँ, डॉक्टर नहीं।)*
+                    *(चिकित्सीय सूचना: यह प्राथमिक मार्गदर्शन है, यह किसी चिकित्सक द्वारा प्रत्यक्ष जांच का विकल्प नहीं है।)*
                     """;
             }
         }
@@ -678,7 +682,7 @@ public class GeminiAiService {
         // English specific symptom triage
         if (q.contains("headache") || q.contains("migraine") || q.contains("head pain")) {
             return """
-                🩺 *AI Medical Health Assistant:*
+                🩺 *Clinical Health Desk:*
                 Preliminary recommendations for **Headache**:
 
                 • Rest in a quiet, dimly lit room and keep your neck relaxed.
@@ -690,13 +694,13 @@ public class GeminiAiService {
                 👨‍⚕️ *Recommended Specialist:* General Physician / Neurologist
                 📍 *Tip:* Share your location pin to view available doctors and book an appointment!
 
-                *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+                *(Clinical Note: This preliminary guidance does not replace a formal in-person physical examination by a registered physician.)*
                 """;
         }
 
         if (q.contains("fever") || q.contains("temperature") || q.contains("chills")) {
             return """
-                🩺 *AI Medical Health Assistant:*
+                🩺 *Clinical Health Desk:*
                 Preliminary care guidance for **Fever**:
 
                 • Track your body temperature with a thermometer every 4-6 hours.
@@ -707,13 +711,13 @@ public class GeminiAiService {
                 👨‍⚕️ *Recommended Specialist:* General Medicine / Physician
                 📍 *Tip:* Share your location pin to see available doctors near you and book an appointment!
 
-                *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+                *(Clinical Note: This preliminary guidance does not replace a formal in-person physical examination by a registered physician.)*
                 """;
         }
 
         if (q.contains("stomach") || q.contains("abdomen") || q.contains("belly") || q.contains("cramp") || q.contains("nausea") || q.contains("vomit")) {
             return """
-                🩺 *AI Medical Health Assistant:*
+                🩺 *Clinical Health Desk:*
                 Preliminary care guidance for **Abdominal Discomfort**:
 
                 • Stick to a bland diet (bananas, rice, applesauce, toast - BRAT diet).
@@ -724,13 +728,13 @@ public class GeminiAiService {
                 👨‍⚕️ *Recommended Specialist:* Gastroenterologist / General Physician
                 📍 *Tip:* Share your location pin to view nearby hospitals and doctors!
 
-                *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+                *(Clinical Note: This preliminary guidance does not replace a formal in-person physical examination by a registered physician.)*
                 """;
         }
 
         if (q.contains("cough") || q.contains("cold") || q.contains("sore throat") || q.contains("throat") || q.contains("sneez")) {
             return """
-                🩺 *AI Medical Health Assistant:*
+                🩺 *Clinical Health Desk:*
                 Preliminary care guidance for **Cold & Throat Symptoms**:
 
                 • Perform warm salt-water gargles 2-3 times daily to soothe throat irritation.
@@ -741,13 +745,13 @@ public class GeminiAiService {
                 👨‍⚕️ *Recommended Specialist:* ENT Specialist / Pulmonologist
                 📍 *Tip:* Share your location pin to check available doctors and book a slot!
 
-                *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+                *(Clinical Note: This preliminary guidance does not replace a formal in-person physical examination by a registered physician.)*
                 """;
         }
 
         // Generic intelligent response
         return """
-            🩺 *AI Medical Health Assistant:*
+            🩺 *Clinical Health Desk:*
             Thank you for consulting MediAssist regarding: *"%s"*
 
             • Monitor the duration, intensity, and any triggers for these symptoms.
@@ -757,7 +761,7 @@ public class GeminiAiService {
             👨‍⚕️ *Recommended Specialist:* General Physician
             📍 *Tip:* Share your WhatsApp location pin to discover registered doctors and book an OPD appointment!
 
-            *(Disclaimer: I am an AI assistant, not a licensed medical doctor.)*
+            *(Clinical Note: This preliminary guidance does not replace a formal in-person physical examination by a registered physician.)*
             """.formatted(userQuery != null ? userQuery.trim() : "your inquiry");
     }
 }

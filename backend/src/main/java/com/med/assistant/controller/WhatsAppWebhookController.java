@@ -38,6 +38,7 @@ public class WhatsAppWebhookController {
     private final HospitalRepository hospitalRepository;
     private final DoctorRepository doctorRepository;
     private final AppointmentRepository appointmentRepository;
+    private final Map<String, String> userTriageDept = new java.util.concurrent.ConcurrentHashMap<>();
 
     public WhatsAppWebhookController(WhatsAppClientService whatsAppClient,
                                      LocationService locationService,
@@ -118,7 +119,7 @@ public class WhatsAppWebhookController {
             case "interactive" -> handleInteractiveMessage(fromPhone, (Map<String, Object>) message.get("interactive"));
             case "image", "document" -> handleDocumentMessage(fromPhone, type, message);
             case "audio" -> handleAudioVoiceNote(fromPhone, (Map<String, Object>) message.get("audio"));
-            default -> whatsAppClient.sendTextMessage(fromPhone, "Hello! I am your AI Medical Assistant. Send your symptoms, share your location to book a doctor, or upload reports to your Report Wardrobe.");
+            default -> whatsAppClient.sendTextMessage(fromPhone, "Hello! Welcome to the Clinical Health Desk. Send your symptoms, share your location to book an OPD token with an available doctor, or upload prescriptions and lab reports.");
         }
     }
 
@@ -126,29 +127,92 @@ public class WhatsAppWebhookController {
         double lat = ((Number) location.get("latitude")).doubleValue();
         double lon = ((Number) location.get("longitude")).doubleValue();
 
-        List<LocationService.NearbyHospitalResult> nearby = locationService.findNearbyHospitals(lat, lon, 25.0);
+        LocationService.HospitalDiscoveryResult discovery = locationService.discoverHospitals(lat, lon);
+        List<LocationService.NearbyHospitalResult> localHospitals = discovery.localBookingHospitals();
+        List<LocationService.NearbyHospitalResult> regionalHospitals = discovery.regionalReferralHospitals();
 
-        if (nearby.isEmpty()) {
-            whatsAppClient.sendTextMessage(fromPhone, "No registered hospitals found within 25 km of your location. Please check back soon as more hospitals join!");
-            return;
+        String preferredDept = userTriageDept.get(fromPhone);
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("🏥 *Hospital & Specialist Care Discovery*\n");
+        sb.append("📍 _Based on your current GPS location_\n\n");
+
+        if (preferredDept != null) {
+            sb.append("🎯 *Specialist Needed:* ").append(preferredDept).append("\n\n");
         }
 
-        List<Map<String, String>> rows = new ArrayList<>();
-        for (LocationService.NearbyHospitalResult res : nearby) {
-            rows.add(Map.of(
-                    "id", "HOSP_" + res.hospital().getId(),
-                    "title", res.hospital().getName(),
-                    "description", res.distanceKm() + " km away • " + res.availableDoctorsCount() + " doctors available"
-            ));
+        // Section 1: Local Partner Hospitals (<= 25 km)
+        sb.append("✅ *1. Available for Instant Booking (Within 25 km)*\n");
+        if (localHospitals.isEmpty()) {
+            sb.append("_No partner clinics currently registered within 25 km of your location._\n\n");
+        } else {
+            sb.append("Book an OPD queue token right here on WhatsApp:\n");
+            for (LocationService.NearbyHospitalResult res : localHospitals) {
+                Hospital h = res.hospital();
+                boolean hasMatchingDept = preferredDept != null && h.getDoctors().stream()
+                        .anyMatch(d -> d.getDepartment() != null && d.getDepartment().toLowerCase().contains(preferredDept.toLowerCase()));
+                sb.append("• *").append(h.getName()).append("* (").append(res.distanceKm()).append(" km away)\n");
+                sb.append("   🩺 ").append(res.availableDoctorsCount()).append(" doctors on duty today");
+                if (hasMatchingDept) {
+                    sb.append(" — ⭐ *").append(preferredDept).append(" available*");
+                }
+                sb.append("\n");
+            }
+            sb.append("\n");
         }
 
-        whatsAppClient.sendInteractiveList(
-                fromPhone,
-                "Nearby Hospitals",
-                "🏥 Found " + nearby.size() + " hospitals near you. Tap below to choose a hospital:",
-                "Select Hospital",
-                rows
-        );
+        // Section 2: Regional Referral Hospitals (> 25 km)
+        sb.append("🌐 *2. Regional Referral Hospitals (Specialist Care)*\n");
+        if (regionalHospitals.isEmpty()) {
+            sb.append("_All available hospitals are within your 25 km radius._\n");
+        } else {
+            sb.append("For super-specialized treatment or advanced regional care:\n");
+            for (LocationService.NearbyHospitalResult res : regionalHospitals) {
+                Hospital h = res.hospital();
+                sb.append("• *").append(h.getName()).append("* (").append(res.distanceKm()).append(" km away)\n");
+                if (h.getSpecialties() != null && !h.getSpecialties().isBlank()) {
+                    sb.append("   🔬 *Specialties:* ").append(h.getSpecialties()).append("\n");
+                }
+                if (h.getAddress() != null && !h.getAddress().isBlank()) {
+                    sb.append("   📍 ").append(h.getAddress()).append("\n");
+                }
+                if (h.getPhone() != null && !h.getPhone().isBlank()) {
+                    sb.append("   📞 Helpline: ").append(h.getPhone()).append("\n");
+                }
+            }
+        }
+
+        // If local hospitals exist, send the text overview + interactive list for instant booking
+        if (!localHospitals.isEmpty()) {
+            whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+
+            List<Map<String, String>> rows = new ArrayList<>();
+            for (LocationService.NearbyHospitalResult res : localHospitals) {
+                Hospital h = res.hospital();
+                boolean hasMatchingDept = preferredDept != null && h.getDoctors().stream()
+                        .anyMatch(d -> d.getDepartment() != null && d.getDepartment().toLowerCase().contains(preferredDept.toLowerCase()));
+                String desc = res.distanceKm() + " km • " + res.availableDoctorsCount() + " doctors"
+                        + (hasMatchingDept ? " • ⭐ " + preferredDept : "");
+                if (desc.length() > 72) desc = desc.substring(0, 72);
+                rows.add(Map.of(
+                        "id", "HOSP_" + h.getId(),
+                        "title", h.getName().length() > 24 ? h.getName().substring(0, 24) : h.getName(),
+                        "description", desc
+                ));
+            }
+
+            whatsAppClient.sendInteractiveList(
+                    fromPhone,
+                    "Partner Hospitals",
+                    "👇 Tap below to select your hospital and view available doctors:",
+                    "Select Hospital",
+                    rows
+            );
+        } else {
+            // When no local hospital is <= 25km, send the text with regional referral options
+            sb.append("\n👉 You can visit any of the referral hospitals above for consultation, or call their helpline directly.");
+            whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+        }
     }
 
     private void handleTextMessage(String fromPhone, Map<String, Object> textObj) {
@@ -232,9 +296,15 @@ public class WhatsAppWebhookController {
             }
         }
 
-        // 4. General AI Medical Triage & Clinical Triage response
+        // 4. General Medical Triage & Clinical Triage response
         String aiResponse = geminiAiService.askMedicalAi(body, "");
         whatsAppClient.sendTextMessage(fromPhone, aiResponse);
+
+        // Track user's needed medical specialty for hospital & doctor recommendations
+        String detectedDept = detectSpecialty(body + " " + aiResponse);
+        if (detectedDept != null) {
+            userTriageDept.put(fromPhone, detectedDept);
+        }
     }
 
     private void handleInteractiveMessage(String fromPhone, Map<String, Object> interactive) {
@@ -246,6 +316,7 @@ public class WhatsAppWebhookController {
 
             if (selectedId != null && selectedId.startsWith("HOSP_")) {
                 Long hospitalId = Long.parseLong(selectedId.replace("HOSP_", ""));
+                Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
                 List<Doctor> doctors = doctorRepository.findByHospitalIdAndAvailableTodayTrue(hospitalId);
 
                 if (doctors.isEmpty()) {
@@ -253,16 +324,80 @@ public class WhatsAppWebhookController {
                     return;
                 }
 
-                List<WhatsAppClientService.ButtonOption> buttons = new ArrayList<>();
-                for (Doctor doc : doctors.stream().limit(3).toList()) {
-                    buttons.add(new WhatsAppClientService.ButtonOption("DOC_" + doc.getId(), "Dr. " + doc.getName()));
+                String preferredDept = userTriageDept.get(fromPhone);
+
+                // Prioritize doctors matching the patient's triage specialty
+                List<Doctor> sortedDocs = new ArrayList<>(doctors);
+                if (preferredDept != null) {
+                    sortedDocs.sort((d1, d2) -> {
+                        boolean m1 = d1.getDepartment() != null && d1.getDepartment().toLowerCase().contains(preferredDept.toLowerCase());
+                        boolean m2 = d2.getDepartment() != null && d2.getDepartment().toLowerCase().contains(preferredDept.toLowerCase());
+                        if (m1 && !m2) return -1;
+                        if (!m1 && m2) return 1;
+                        return 0;
+                    });
                 }
 
-                whatsAppClient.sendInteractiveButtons(
-                        fromPhone,
-                        "Select an available doctor for today:",
-                        buttons
-                );
+                // Build detailed doctor schedule message
+                StringBuilder docText = new StringBuilder();
+                docText.append("👨‍⚕️ *Doctors Available Today at ")
+                       .append(hospital != null ? hospital.getName() : "Hospital")
+                       .append(":*\n\n");
+
+                int idx = 1;
+                for (Doctor doc : sortedDocs) {
+                    boolean isMatch = preferredDept != null && doc.getDepartment() != null 
+                            && doc.getDepartment().toLowerCase().contains(preferredDept.toLowerCase());
+                    docText.append(idx++).append(". *").append(doc.getName()).append("*\n")
+                           .append("   • Specialty: *").append(doc.getDepartment()).append("*\n")
+                           .append("   • Room: ").append(doc.getRoomNumber() != null ? doc.getRoomNumber() : "-")
+                           .append(" | Fee: ₹").append((int) doc.getConsultationFee()).append("\n");
+                    if (doc.getAvailableTime() != null && !doc.getAvailableTime().isBlank()) {
+                        docText.append("   • Hours: ").append(doc.getAvailableTime()).append("\n");
+                    }
+                    if (isMatch) {
+                        docText.append("   ⭐ _Recommended based on your consultation_\n");
+                    }
+                    docText.append("\n");
+                }
+                docText.append("👉 Tap a doctor below to book your OPD queue token:");
+
+                // Interactive Buttons (up to 3 doctors)
+                if (sortedDocs.size() <= 3) {
+                    List<WhatsAppClientService.ButtonOption> buttons = new ArrayList<>();
+                    for (Doctor doc : sortedDocs) {
+                        buttons.add(new WhatsAppClientService.ButtonOption("DOC_" + doc.getId(), formatDoctorButtonTitle(doc)));
+                    }
+                    whatsAppClient.sendInteractiveButtons(
+                            fromPhone,
+                            docText.toString(),
+                            buttons
+                    );
+                } else {
+                    // Interactive List (if more than 3 doctors)
+                    List<Map<String, String>> docRows = new ArrayList<>();
+                    for (Doctor doc : sortedDocs.stream().limit(10).toList()) {
+                        String title = doc.getName();
+                        if (title.length() > 24) title = title.substring(0, 24);
+                        String desc = doc.getDepartment() + " • Room " + (doc.getRoomNumber() != null ? doc.getRoomNumber() : "-") + " • ₹" + (int) doc.getConsultationFee();
+                        if (desc.length() > 72) desc = desc.substring(0, 72);
+                        docRows.add(Map.of(
+                                "id", "DOC_" + doc.getId(),
+                                "title", title,
+                                "description", desc
+                        ));
+                    }
+                    whatsAppClient.sendInteractiveList(
+                            fromPhone,
+                            "Available Doctors",
+                            docText.toString(),
+                            "Select Doctor",
+                            docRows
+                    );
+                }
+            } else if (selectedId != null && selectedId.startsWith("DOC_")) {
+                Long doctorId = Long.parseLong(selectedId.replace("DOC_", ""));
+                bookAppointmentForDoctor(fromPhone, doctorId);
             }
         } else if ("button_reply".equals(type)) {
             Map<String, Object> reply = (Map<String, Object>) interactive.get("button_reply");
@@ -401,7 +536,7 @@ public class WhatsAppWebhookController {
             }
 
             // Send immediate acknowledgement on WhatsApp
-            whatsAppClient.sendTextMessage(fromPhone, "🔍 *Prescription received!* Analyzing medications with Gemini Vision AI and scheduling your daily reminder alarms... ⏳");
+            whatsAppClient.sendTextMessage(fromPhone, "🔍 *Prescription received!* Reviewing your prescribed medications and scheduling your daily reminder alarms... ⏳");
 
             // Attempt to download the real image from Meta WhatsApp API (with Bearer redirect support)
             byte[] fileBytes = null;
@@ -409,7 +544,7 @@ public class WhatsAppWebhookController {
                 fileBytes = whatsAppClient.downloadMedia(mediaId);
             }
 
-            // Analyze prescription with Gemini VLM & extract medication alarms
+            // Analyze prescription & extract medication alarms
             GeminiAiService.PrescriptionAnalysisResult result = null;
             if (fileBytes != null && fileBytes.length > 0) {
                 result = geminiAiService.analyzePrescriptionForReminders(fileBytes, mimeType, originalName);
@@ -437,8 +572,8 @@ public class WhatsAppWebhookController {
                 }
 
                 whatsAppClient.sendTextMessage(fromPhone, """
-                    ⚠️ *Prescription Analysis Notice:*
-                    We received your document, but were unable to read the medications clearly with Gemini Vision AI (Google AI services may be experiencing high demand or handwriting was unclear).
+                    ⚠️ *Prescription Review Notice:*
+                    We received your document, but were unable to read the medications clearly from the handwriting or image quality.
                     
                     👉 *How to set your reminders:*
                     1. Try sending a closer, clearer photo of the prescription.
@@ -484,7 +619,7 @@ public class WhatsAppWebhookController {
 
             // Build patient-facing response
             StringBuilder reply = new StringBuilder();
-            reply.append("📋 *Prescription Analyzed by Gemini AI!*\n\n");
+            reply.append("📋 *Prescription Review & Medication Schedule*\n\n");
             if (result != null && result.doctorNotes() != null && !result.doctorNotes().isBlank()) {
                 reply.append("🩺 *Clinical Observations / Notes:*\n")
                      .append(result.doctorNotes()).append("\n\n");
@@ -516,10 +651,88 @@ public class WhatsAppWebhookController {
         whatsAppClient.sendTextMessage(fromPhone, """
             🎙️ Voice note received!
             
-            Our AI has processed your audio.
+            Your audio message has been received and processed.
             • We have noted your symptoms.
-            • If you would like to book a doctor, simply share your current location pin via WhatsApp!
+            • If you would like to book an appointment with an on-duty doctor, simply share your current location pin via WhatsApp!
             """);
+    }
+
+    private String detectSpecialty(String text) {
+        if (text == null) return null;
+        String lower = text.toLowerCase();
+        if (lower.contains("cardio") || lower.contains("heart") || lower.contains("chest pain") || lower.contains("palpitation") || lower.contains("hypertension")) {
+            return "Cardiology";
+        }
+        if (lower.contains("ortho") || lower.contains("bone") || lower.contains("fracture") || lower.contains("joint") || lower.contains("knee") || lower.contains("back pain")) {
+            return "Orthopedics";
+        }
+        if (lower.contains("pedia") || lower.contains("child") || lower.contains("baby") || lower.contains("infant") || lower.contains("kid")) {
+            return "Pediatrics";
+        }
+        if (lower.contains("derma") || lower.contains("skin") || lower.contains("rash") || lower.contains("acne") || lower.contains("eczema") || lower.contains("itching")) {
+            return "Dermatology";
+        }
+        if (lower.contains("ent") || lower.contains("ear") || lower.contains("throat") || lower.contains("sinus") || lower.contains("tonsil")) {
+            return "ENT";
+        }
+        if (lower.contains("gynae") || lower.contains("obstetric") || lower.contains("pregnancy") || lower.contains("period") || lower.contains("menstrual")) {
+            return "Gynecology & Obstetrics";
+        }
+        if (lower.contains("neuro") || lower.contains("brain") || lower.contains("migraine") || lower.contains("headache") || lower.contains("seizure")) {
+            return "Neurology";
+        }
+        if (lower.contains("onco") || lower.contains("cancer") || lower.contains("tumor") || lower.contains("chemotherapy")) {
+            return "Oncology";
+        }
+        if (lower.contains("gastro") || lower.contains("stomach") || lower.contains("digestion") || lower.contains("acidity") || lower.contains("liver")) {
+            return "Gastroenterology";
+        }
+        if (lower.contains("pulmo") || lower.contains("lung") || lower.contains("asthma") || lower.contains("breath") || lower.contains("respiratory")) {
+            return "Pulmonology";
+        }
+        if (lower.contains("nephro") || lower.contains("kidney") || lower.contains("renal") || lower.contains("dialysis") || lower.contains("stone")) {
+            return "Nephrology";
+        }
+        if (lower.contains("eye") || lower.contains("vision") || lower.contains("cataract")) {
+            return "Ophthalmology";
+        }
+        if (lower.contains("fever") || lower.contains("weakness") || lower.contains("cold") || lower.contains("infection") || lower.contains("fatigue")) {
+            return "General Medicine";
+        }
+        return null;
+    }
+
+    private String formatDoctorButtonTitle(Doctor doc) {
+        String name = doc.getName();
+        String dept = doc.getDepartment() != null ? doc.getDepartment() : "Gen";
+        String shortDept = switch (dept.toLowerCase()) {
+            case "cardiology" -> "Cardio";
+            case "pediatrics" -> "Pedia";
+            case "orthopedics" -> "Ortho";
+            case "dermatology" -> "Derma";
+            case "general medicine", "internal medicine" -> "GenMed";
+            case "ent" -> "ENT";
+            case "gynecology", "gynecology & obstetrics" -> "Gynae";
+            case "neurology" -> "Neuro";
+            case "oncology" -> "Onco";
+            case "gastroenterology" -> "Gastro";
+            case "pulmonology" -> "Pulmo";
+            case "nephrology" -> "Nephro";
+            case "ophthalmology" -> "Eye";
+            case "urology" -> "Uro";
+            default -> dept.length() > 6 ? dept.substring(0, 6) : dept;
+        };
+
+        String cleanName = name.replaceFirst("(?i)^dr\\.?\\s*", "").trim();
+        String candidate = "Dr. " + cleanName.split("\\s+")[0] + " (" + shortDept + ")";
+        if (candidate.length() <= 20) {
+            return candidate;
+        }
+        String compact = cleanName.split("\\s+")[0] + " (" + shortDept + ")";
+        if (compact.length() <= 20) {
+            return compact;
+        }
+        return candidate.substring(0, Math.min(candidate.length(), 20));
     }
 
     private void handleCreateReminderFromText(String fromPhone, String text) {

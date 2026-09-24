@@ -19,6 +19,44 @@ public class LocationService {
 
     public record NearbyHospitalResult(Hospital hospital, double distanceKm, int availableDoctorsCount) {}
 
+    public record HospitalDiscoveryResult(
+            List<NearbyHospitalResult> localBookingHospitals,
+            List<NearbyHospitalResult> regionalReferralHospitals
+    ) {}
+
+    /**
+     * Discovers hospitals in two categories:
+     * 1. Local Booking Hospitals (<= 25 km): Available to book OPD tokens instantly with us.
+     * 2. Regional Referral Hospitals (> 25 km): For visiting specialized departments outside the immediate radius.
+     */
+    public HospitalDiscoveryResult discoverHospitals(double userLat, double userLon) {
+        List<Hospital> allHospitals = hospitalRepository.findByActiveTrue();
+
+        List<NearbyHospitalResult> allWithDist = allHospitals.stream()
+                .map(h -> {
+                    double dist = calculateDistanceKm(userLat, userLon, h.getLatitude(), h.getLongitude());
+                    int availableDocs = (int) h.getDoctors().stream()
+                            .filter(d -> d.isAvailableToday())
+                            .count();
+                    return new NearbyHospitalResult(h, dist, availableDocs);
+                })
+                .sorted(Comparator.comparingDouble(NearbyHospitalResult::distanceKm))
+                .collect(Collectors.toList());
+
+        List<NearbyHospitalResult> local = allWithDist.stream()
+                .filter(res -> res.distanceKm() <= 25.0)
+                .limit(5)
+                .collect(Collectors.toList());
+
+        List<NearbyHospitalResult> regional = allWithDist.stream()
+                .filter(res -> res.distanceKm() > 25.0)
+                .limit(5)
+                .collect(Collectors.toList());
+
+        // If no regional hospitals exist > 25km, but more local exist, or vice versa, return what exists
+        return new HospitalDiscoveryResult(local, regional);
+    }
+
     /**
      * Calculates nearby hospitals within a radius using Haversine formula.
      * Works seamlessly across both H2 (local testing) and PostgreSQL.

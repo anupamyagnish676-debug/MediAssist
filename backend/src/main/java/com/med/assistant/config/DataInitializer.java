@@ -61,108 +61,167 @@ public class DataInitializer {
                     logger.info("Super admin account initialized: admin@mediassist.com / Admin@123");
                 }
 
-                if (!seedDemoData || hospitalRepo.count() > 0) return;
+                // 1. Hospital 1: City Care (Local, ~0 km)
+                Hospital h1 = hospitalRepo.findByNameIgnoreCase("City Care Multispeciality Hospital").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "City Care Multispeciality Hospital",
+                            "104 Health Avenue, Central District, New Delhi",
+                            28.6139, 77.2090,
+                            "+91 11-2334-1100",
+                            "#0284c7"
+                    );
+                    h.setSpecialties("Cardiology, Pediatrics, General Medicine, Dermatology");
+                    h = hospitalRepo.save(h);
 
-                logger.info("Seeding demo hospitals, doctors, and appointments...");
+                    Doctor d1 = new Doctor("Dr. Sarah Jenkins", "Cardiology", h, 30, 600.0);
+                    d1.setRoomNumber("201");
+                    d1.setAvailableTime("10:00 AM - 2:00 PM");
+                    Doctor d2 = new Doctor("Dr. Rajiv Mehta", "Pediatrics", h, 25, 450.0);
+                    d2.setRoomNumber("105");
+                    d2.setAvailableTime("11:00 AM - 3:00 PM");
+                    Doctor d3 = new Doctor("Dr. Elena Rostova", "General Medicine", h, 40, 350.0);
+                    d3.setRoomNumber("101");
+                    d3.setAvailableTime("09:00 AM - 1:00 PM");
+                    doctorRepo.save(d1);
+                    doctorRepo.save(d2);
+                    doctorRepo.save(d3);
 
-            // 1. Hospital 1
-            Hospital h1 = new Hospital(
-                    "City Care Multispeciality Hospital",
-                    "104 Health Avenue, Central District",
-                    28.6139, 77.2090, // Central coordinates
-                    "+1 800-555-0199",
-                    "#0284c7"
-            );
-            hospitalRepo.save(h1);
+                    // Sample Confirmed Appointments with QR tokens
+                    String qrToken1 = "DEMO-QR-001";
+                    Appointment a1 = new Appointment(h, d1, "+919876543210", "John Doe",
+                            LocalDate.now(), "10:30 AM", 1, qrToken1);
+                    apptRepo.save(a1);
+                    try { pdfService.generatePdfSlip(a1); } catch (Exception ignored) {}
 
-            Doctor d1 = new Doctor("Dr. Sarah Jenkins", "Cardiology", h1, 30, 60.0);
-            d1.setRoomNumber("201");
-            Doctor d2 = new Doctor("Dr. Rajiv Mehta", "Pediatrics", h1, 25, 45.0);
-            d2.setRoomNumber("105");
-            Doctor d3 = new Doctor("Dr. Elena Rostova", "General Medicine", h1, 40, 35.0);
-            d3.setRoomNumber("101");
-            doctorRepo.save(d1);
-            doctorRepo.save(d2);
-            doctorRepo.save(d3);
+                    return h;
+                });
 
-            // 2. Hospital 2
-            Hospital h2 = new Hospital(
-                    "Apollo Metro Health Clinic",
-                    "58 Parkside Plaza, North Wing",
-                    28.6250, 77.2150,
-                    "+1 800-555-0244",
-                    "#0d9488"
-            );
-            hospitalRepo.save(h2);
+                // 2. Hospital 2: Apollo Metro (Local, ~1.4 km)
+                Hospital h2 = hospitalRepo.findByNameIgnoreCase("Apollo Metro Health Clinic").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Apollo Metro Health Clinic",
+                            "58 Parkside Plaza, North Wing, New Delhi",
+                            28.6250, 77.2150,
+                            "+91 11-2338-2200",
+                            "#0d9488"
+                    );
+                    h.setSpecialties("Orthopedics, Dermatology, ENT, General Medicine");
+                    h = hospitalRepo.save(h);
 
-            Doctor d4 = new Doctor("Dr. Michael Chang", "Orthopedics", h2, 20, 70.0);
-            d4.setRoomNumber("302");
-            Doctor d5 = new Doctor("Dr. Aisha Patel", "Dermatology", h2, 25, 50.0);
-            d5.setRoomNumber("204");
-            doctorRepo.save(d4);
-            doctorRepo.save(d5);
+                    Doctor d4 = new Doctor("Dr. Michael Chang", "Orthopedics", h, 20, 700.0);
+                    d4.setRoomNumber("302");
+                    d4.setAvailableTime("10:00 AM - 1:00 PM");
+                    Doctor d5 = new Doctor("Dr. Aisha Patel", "Dermatology", h, 25, 500.0);
+                    d5.setRoomNumber("204");
+                    d5.setAvailableTime("02:00 PM - 6:00 PM");
+                    Doctor d6 = new Doctor("Dr. Vikas Gupta", "ENT", h, 25, 550.0);
+                    d6.setRoomNumber("208");
+                    d6.setAvailableTime("11:00 AM - 3:00 PM");
+                    doctorRepo.save(d4);
+                    doctorRepo.save(d5);
+                    doctorRepo.save(d6);
+                    return h;
+                });
 
-            // 3. Hospital 3
-            Hospital h3 = new Hospital(
-                    "Sunrise Children & Family Hospital",
-                    "12 Riverbank Road, South Extension",
-                    28.6010, 77.1950,
-                    "+1 800-555-0377",
-                    "#f97316"
-            );
-            hospitalRepo.save(h3);
+                // 3. Hospital 3: Sunrise Children & Family (Local, ~2.0 km)
+                Hospital h3 = hospitalRepo.findByNameIgnoreCase("Sunrise Children & Family Hospital").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Sunrise Children & Family Hospital",
+                            "12 Riverbank Road, South Extension, New Delhi",
+                            28.6010, 77.1950,
+                            "+91 11-2460-3300",
+                            "#f97316"
+                    );
+                    h.setSpecialties("General Medicine, Gynecology & Obstetrics, Pediatrics");
+                    h = hospitalRepo.save(h);
 
-            Doctor d6 = new Doctor("Dr. David Miller", "General Medicine", h3, 35, 40.0);
-            d6.setRoomNumber("102");
-            doctorRepo.save(d6);
+                    Doctor d7 = new Doctor("Dr. David Miller", "General Medicine", h, 35, 400.0);
+                    d7.setRoomNumber("102");
+                    d7.setAvailableTime("09:00 AM - 2:00 PM");
+                    Doctor d8 = new Doctor("Dr. Sunita Rao", "Gynecology & Obstetrics", h, 25, 650.0);
+                    d8.setRoomNumber("108");
+                    d8.setAvailableTime("10:30 AM - 2:30 PM");
+                    doctorRepo.save(d7);
+                    doctorRepo.save(d8);
+                    return h;
+                });
 
-            // 4. Sample Confirmed Appointments with QR tokens
-            String qrToken1 = "DEMO-QR-001";
-            Appointment a1 = new Appointment(h1, d1, "+919876543210", "John Doe",
-                    LocalDate.now(), "10:30 AM", 1, qrToken1);
-            apptRepo.save(a1);
-            try {
-                pdfService.generatePdfSlip(a1);
-            } catch (Exception ignored) {}
+                // 4. Hospital 4: Apex Regional Super-Specialty Institute (Regional Referral, ~34 km away)
+                Hospital h4 = hospitalRepo.findByNameIgnoreCase("Apex Regional Super-Specialty Institute").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Apex Regional Super-Specialty Institute",
+                            "Plot 9, Expressway Institutional Area, Greater Noida",
+                            28.4744, 77.5040,
+                            "+91 120-499-5500",
+                            "#7c3aed"
+                    );
+                    h.setSpecialties("Neurology, Oncology, Cardiology, Nephrology");
+                    h = hospitalRepo.save(h);
 
-            String qrToken2 = "DEMO-QR-002";
-            Appointment a2 = new Appointment(h1, d1, "+919876543211", "Alice Smith",
-                    LocalDate.now(), "11:00 AM", 2, qrToken2);
-            apptRepo.save(a2);
+                    Doctor d9 = new Doctor("Dr. Arvind Swamy", "Neurology", h, 20, 900.0);
+                    d9.setRoomNumber("401");
+                    d9.setAvailableTime("10:00 AM - 1:00 PM");
+                    Doctor d10 = new Doctor("Dr. Reema Sen", "Oncology", h, 15, 1000.0);
+                    d10.setRoomNumber("405");
+                    d10.setAvailableTime("01:00 PM - 4:00 PM");
+                    doctorRepo.save(d9);
+                    doctorRepo.save(d10);
+                    return h;
+                });
 
-            // 5. Sample Medication Reminder
-            MedicationReminder rem1 = new MedicationReminder("+919876543210", "Metformin 500mg", "1 tablet post-dinner", "21:00");
-            reminderRepo.save(rem1);
+                // 5. Hospital 5: Metro Fortis Tertiary Care Center (Regional Referral, ~28 km away)
+                Hospital h5 = hospitalRepo.findByNameIgnoreCase("Metro Fortis Tertiary Care Center").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Metro Fortis Tertiary Care Center",
+                            "Sector 44 Institutional Area, Golf Course Ext, Gurugram",
+                            28.4595, 77.0266,
+                            "+91 124-455-8800",
+                            "#059669"
+                    );
+                    h.setSpecialties("Gastroenterology, Pulmonology, Urology, Nephrology");
+                    h = hospitalRepo.save(h);
 
-            // 6. Seed Super Admin & Hospital Managers
-            com.med.assistant.model.User admin = new com.med.assistant.model.User(
-                    "admin@mediassist.com",
-                    passwordEncoder.encode("Admin@123"),
-                    "Platform Administrator",
-                    com.med.assistant.model.User.Role.SUPER_ADMIN,
-                    null
-            );
-            userRepo.save(admin);
+                    Doctor d11 = new Doctor("Dr. Sanjay Kapoor", "Gastroenterology", h, 20, 800.0);
+                    d11.setRoomNumber("310");
+                    d11.setAvailableTime("10:00 AM - 2:00 PM");
+                    Doctor d12 = new Doctor("Dr. Ananya Sen", "Pulmonology", h, 20, 750.0);
+                    d12.setRoomNumber("315");
+                    d12.setAvailableTime("02:00 PM - 5:00 PM");
+                    doctorRepo.save(d11);
+                    doctorRepo.save(d12);
+                    return h;
+                });
 
-            com.med.assistant.model.User manager1 = new com.med.assistant.model.User(
-                    "manager@citycare.com",
-                    passwordEncoder.encode("Manager@123"),
-                    "City Care Operations Manager",
-                    com.med.assistant.model.User.Role.HOSPITAL_MANAGER,
-                    h1
-            );
-            userRepo.save(manager1);
+                // Sample Medication Reminder
+                if (reminderRepo.count() == 0) {
+                    MedicationReminder rem1 = new MedicationReminder("+919876543210", "Metformin 500mg", "1 tablet post-dinner", "21:00");
+                    reminderRepo.save(rem1);
+                }
 
-            com.med.assistant.model.User manager2 = new com.med.assistant.model.User(
-                    "manager@apollo.com",
-                    passwordEncoder.encode("Manager@123"),
-                    "Apollo Clinic Desk Incharge",
-                    com.med.assistant.model.User.Role.HOSPITAL_MANAGER,
-                    h2
-            );
-            userRepo.save(manager2);
+                // Hospital Managers
+                if (userRepo.findByEmailIgnoreCase("manager@citycare.com").isEmpty()) {
+                    com.med.assistant.model.User manager1 = new com.med.assistant.model.User(
+                            "manager@citycare.com",
+                            passwordEncoder.encode("Manager@123"),
+                            "City Care Operations Manager",
+                            com.med.assistant.model.User.Role.HOSPITAL_MANAGER,
+                            h1
+                    );
+                    userRepo.save(manager1);
+                }
 
-            logger.info("Demo database & accounts seeded successfully! Admin: admin@mediassist.com / Admin@123");
+                if (userRepo.findByEmailIgnoreCase("manager@apollo.com").isEmpty()) {
+                    com.med.assistant.model.User manager2 = new com.med.assistant.model.User(
+                            "manager@apollo.com",
+                            passwordEncoder.encode("Manager@123"),
+                            "Apollo Clinic Desk Incharge",
+                            com.med.assistant.model.User.Role.HOSPITAL_MANAGER,
+                            h2
+                    );
+                    userRepo.save(manager2);
+                }
+
+                logger.info("Demo database & accounts seeded successfully! Admin: admin@mediassist.com / Admin@123");
             } catch (Exception ex) {
                 logger.warn("DataInitializer note: Database initialization or check skipped: {}", ex.getMessage());
             }
