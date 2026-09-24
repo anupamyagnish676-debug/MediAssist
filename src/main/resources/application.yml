@@ -74,9 +74,9 @@ spring:
     show-sql: false
 app:
   whatsapp:
-    verify-token: ${WHATSAPP_VERIFY_TOKEN}
+    verify-token: ${WHATSAPP_VERIFY_TOKEN:my_medical_bot_verify_token_2026}
     access-token: ${WHATSAPP_TOKEN:${WHATSAPP_ACCESS_TOKEN:}}
-    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:100000000000000}
     api-url: https://graph.facebook.com/v20.0
   ai:
     gemini:
