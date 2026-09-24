@@ -335,9 +335,17 @@ public class WhatsAppWebhookController {
 
                 // STRICT FILTERING: show doctors related to that specific department only!
                 List<Doctor> deptDocs = allDoctors;
-                if (preferredDept != null && !preferredDept.isBlank() && !preferredDept.equalsIgnoreCase("General Medicine")) {
+                if (preferredDept != null && !preferredDept.isBlank()) {
+                    String pDept = preferredDept.toLowerCase().trim();
                     List<Doctor> matching = allDoctors.stream()
-                            .filter(d -> d.getDepartment() != null && d.getDepartment().toLowerCase().contains(preferredDept.toLowerCase()))
+                            .filter(d -> {
+                                if (d.getDepartment() == null) return false;
+                                String dDept = d.getDepartment().toLowerCase();
+                                if (pDept.contains("medicine") || pDept.equals("general medicine")) {
+                                    return dDept.contains("medicine") || dDept.contains("general") || dDept.contains("physician");
+                                }
+                                return dDept.contains(pDept);
+                            })
                             .toList();
                     if (!matching.isEmpty()) {
                         deptDocs = matching;
@@ -346,7 +354,7 @@ public class WhatsAppWebhookController {
 
                 // Build doctor schedule message
                 StringBuilder docText = new StringBuilder();
-                String deptHeader = (preferredDept != null && !preferredDept.equalsIgnoreCase("General Medicine")) ? preferredDept + " " : "";
+                String deptHeader = (preferredDept != null && !preferredDept.isBlank()) ? preferredDept + " " : "";
                 docText.append("👨‍⚕️ *").append(deptHeader).append("Specialists Available Today at ")
                        .append(hospital != null ? hospital.getName() : "Hospital")
                        .append(":*\n\n");
@@ -803,7 +811,8 @@ public class WhatsAppWebhookController {
         if (lower.contains("eye") || lower.contains("vision") || lower.contains("cataract")) {
             return "Ophthalmology";
         }
-        if (lower.contains("fever") || lower.contains("weakness") || lower.contains("cold") || lower.contains("infection") || lower.contains("fatigue")) {
+        if (lower.contains("medicine") || lower.contains("physician") || lower.contains("internal med")
+                || lower.contains("fever") || lower.contains("weakness") || lower.contains("cold") || lower.contains("infection") || lower.contains("fatigue")) {
             return "General Medicine";
         }
         return null;

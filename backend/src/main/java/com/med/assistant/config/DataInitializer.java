@@ -192,6 +192,83 @@ public class DataInitializer {
                     return h;
                 });
 
+                // 6. Hospital 6: KIMS Hospital (Kalinga Institute of Medical Sciences) - Bhubaneswar / KIIT
+                Hospital h6 = hospitalRepo.findByNameIgnoreCase("KIMS Hospital (Kalinga Institute of Medical Sciences)").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "KIMS Hospital (Kalinga Institute of Medical Sciences)",
+                            "KIMS Hospital Road, KIIT Campus 5, Patia, Bhubaneswar, Odisha 751024",
+                            20.3535, 85.8155,
+                            "+91 674-710-5300",
+                            "#0284c7"
+                    );
+                    h.setSpecialties("General Medicine, Cardiology, Pediatrics, Orthopedics, ENT, Dermatology, Gastroenterology, Neurology");
+                    h = hospitalRepo.save(h);
+
+                    Doctor d13 = new Doctor("Dr. Rajesh Mohapatra", "General Medicine", h, 40, 400.0);
+                    d13.setRoomNumber("101");
+                    d13.setAvailableTime("09:00 AM - 1:00 PM");
+                    Doctor d14 = new Doctor("Dr. Subrat Mishra", "Cardiology", h, 30, 600.0);
+                    d14.setRoomNumber("205");
+                    d14.setAvailableTime("10:00 AM - 2:00 PM");
+                    Doctor d15 = new Doctor("Dr. Priyadarshini Panda", "Pediatrics", h, 25, 450.0);
+                    d15.setRoomNumber("108");
+                    d15.setAvailableTime("11:00 AM - 3:00 PM");
+                    Doctor d16 = new Doctor("Dr. Alok Nayak", "Orthopedics", h, 25, 500.0);
+                    d16.setRoomNumber("302");
+                    d16.setAvailableTime("10:00 AM - 1:00 PM");
+                    Doctor d17 = new Doctor("Dr. Vikas Gupta", "ENT", h, 25, 450.0);
+                    d17.setRoomNumber("204");
+                    d17.setAvailableTime("02:00 PM - 5:00 PM");
+                    doctorRepo.save(d13);
+                    doctorRepo.save(d14);
+                    doctorRepo.save(d15);
+                    doctorRepo.save(d16);
+                    doctorRepo.save(d17);
+                    return h;
+                });
+
+                // 7. Hospital 7: Apollo Hospitals Bhubaneswar
+                Hospital h7 = hospitalRepo.findByNameIgnoreCase("Apollo Hospitals Bhubaneswar").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Apollo Hospitals Bhubaneswar",
+                            "Plot No. 251, Sainik School Road, Unit 15, Bhubaneswar, Odisha 751005",
+                            20.3056, 85.8316,
+                            "+91 674-666-1066",
+                            "#0d9488"
+                    );
+                    h.setSpecialties("General Medicine, Cardiology, Neurology, Oncology, Nephrology");
+                    h = hospitalRepo.save(h);
+
+                    Doctor d18 = new Doctor("Dr. Tanmay Ray", "General Medicine", h, 35, 600.0);
+                    d18.setRoomNumber("102");
+                    d18.setAvailableTime("10:00 AM - 2:00 PM");
+                    Doctor d19 = new Doctor("Dr. Debasis Patnaik", "Cardiology", h, 25, 800.0);
+                    d19.setRoomNumber("201");
+                    d19.setAvailableTime("11:00 AM - 3:00 PM");
+                    doctorRepo.save(d18);
+                    doctorRepo.save(d19);
+                    return h;
+                });
+
+                // 8. Hospital 8: AIIMS Bhubaneswar
+                Hospital h8 = hospitalRepo.findByNameIgnoreCase("AIIMS Bhubaneswar").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "AIIMS Bhubaneswar",
+                            "Sijua, Patrapada, Bhubaneswar, Odisha 751019",
+                            20.2312, 85.7766,
+                            "+91 674-247-6789",
+                            "#7c3aed"
+                    );
+                    h.setSpecialties("General Medicine, Cardiology, Orthopedics, Pediatrics, Neurology");
+                    h = hospitalRepo.save(h);
+
+                    Doctor d20 = new Doctor("Dr. Manoj Kumar Mohanty", "General Medicine", h, 50, 100.0);
+                    d20.setRoomNumber("OPD-12");
+                    d20.setAvailableTime("09:00 AM - 1:00 PM");
+                    doctorRepo.save(d20);
+                    return h;
+                });
+
                 // Sample Medication Reminder
                 if (reminderRepo.count() == 0) {
                     MedicationReminder rem1 = new MedicationReminder("+919876543210", "Metformin 500mg", "1 tablet post-dinner", "21:00");

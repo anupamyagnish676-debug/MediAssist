@@ -73,14 +73,23 @@ public class LocationService {
                 })
                 .filter(res -> res.distanceKm() <= maxRadiusKm)
                 .filter(res -> {
-                    if (department == null || department.isBlank() || department.equalsIgnoreCase("General Medicine")) {
+                    if (department == null || department.isBlank()) {
                         return true;
                     }
                     Hospital h = res.hospital();
-                    boolean docMatch = h.getDoctors().stream().anyMatch(d ->
-                            d.getDepartment() != null && d.getDepartment().toLowerCase().contains(department.toLowerCase())
+                    String dept = department.toLowerCase().trim();
+                    boolean docMatch = h.getDoctors().stream().anyMatch(d -> {
+                        if (d.getDepartment() == null) return false;
+                        String dDept = d.getDepartment().toLowerCase();
+                        if (dept.contains("medicine") || dept.equals("general medicine")) {
+                            return dDept.contains("medicine") || dDept.contains("general") || dDept.contains("physician");
+                        }
+                        return dDept.contains(dept);
+                    });
+                    boolean specMatch = h.getSpecialties() != null && (
+                            (dept.contains("medicine") && (h.getSpecialties().toLowerCase().contains("medicine") || h.getSpecialties().toLowerCase().contains("general")))
+                            || h.getSpecialties().toLowerCase().contains(dept)
                     );
-                    boolean specMatch = h.getSpecialties() != null && h.getSpecialties().toLowerCase().contains(department.toLowerCase());
                     return docMatch || specMatch;
                 })
                 .sorted(Comparator.comparingDouble(NearbyHospitalResult::distanceKm))
