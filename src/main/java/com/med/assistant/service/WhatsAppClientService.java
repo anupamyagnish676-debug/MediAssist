@@ -27,18 +27,6 @@ public class WhatsAppClientService {
 
     public record ButtonOption(String id, String title) {}
 
-    /**
-     * Send standard plain text WhatsApp message.
-     */
-    public void sendTextMessage(String toPhone, String text) {
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("messaging_product", "whatsapp");
-        payload.put("to", toPhone);
-        payload.put("type", "text");
-        payload.put("text", Map.of("body", text));
-
-        postToWhatsApp(payload);
-    }
 
     /**
      * Send Quick-Reply Interactive Buttons (e.g. [Taken] [Snooze], or Doctor Selection).
@@ -135,15 +123,33 @@ public class WhatsAppClientService {
         }
     }
 
-    private void postToWhatsApp(Map<String, Object> payload) {
+    private String resolvePhoneNumberId() {
+        if (phoneNumberId != null && !phoneNumberId.isBlank() && !phoneNumberId.contains("100000000000000")) {
+            return phoneNumberId.trim();
+        }
+        return "1325869243944497";
+    }
+
+    public boolean sendTextMessage(String toPhone, String text) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("messaging_product", "whatsapp");
+        payload.put("to", toPhone);
+        payload.put("type", "text");
+        payload.put("text", Map.of("body", text));
+
+        return postToWhatsApp(payload);
+    }
+
+    private boolean postToWhatsApp(Map<String, Object> payload) {
         String token = resolveAccessToken();
+        String phoneId = resolvePhoneNumberId();
         if (token == null || token.isBlank() || token.contains("SAMPLE")) {
             logger.info("[DEV / SANDBOX] WhatsApp Outbound Message to {}: {}", payload.get("to"), payload);
-            return;
+            return false;
         }
 
         try {
-            String url = apiUrl + "/" + phoneNumberId + "/messages";
+            String url = apiUrl + "/" + phoneId + "/messages";
             logger.info("Posting outbound message to Meta API: url={}, recipient={}", url, payload.get("to"));
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -152,10 +158,13 @@ public class WhatsAppClientService {
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
             logger.info("WhatsApp message sent successfully! Meta Response: {}", response.getBody());
+            return true;
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
             logger.error("Meta API HTTP Error {}: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            return false;
         } catch (Exception e) {
             logger.error("Failed to send WhatsApp message: {}", e.getMessage(), e);
+            return false;
         }
     }
 }

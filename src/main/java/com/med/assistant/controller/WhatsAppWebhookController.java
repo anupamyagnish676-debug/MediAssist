@@ -76,6 +76,18 @@ public class WhatsAppWebhookController {
     }
 
     /**
+     * Test Outbound WhatsApp Delivery from Server directly to phone.
+     */
+    @GetMapping("/test-send")
+    public ResponseEntity<Map<String, Object>> testSend(
+            @RequestParam(defaultValue = "917078015617") String phone,
+            @RequestParam(defaultValue = "Hello from MediAssist Server! Your live WhatsApp bot connection is verified.") String message) {
+        logger.info("Triggering test outbound WhatsApp message to {}", phone);
+        boolean sent = whatsAppClient.sendTextMessage(phone, message);
+        return ResponseEntity.ok(Map.of("success", sent, "recipient", phone, "message", message));
+    }
+
+    /**
      * Inbound WhatsApp Message Handler.
      */
     @PostMapping("/webhook")
