@@ -35,9 +35,19 @@ public class DataInitializer {
                                           MedicationReminderRepository reminderRepo,
                                           UserRepository userRepo,
                                           org.springframework.security.crypto.password.PasswordEncoder passwordEncoder,
-                                          AppointmentSlipPdfService pdfService) {
+                                          AppointmentSlipPdfService pdfService,
+                                          org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         return args -> {
             try {
+                // Ensure schema columns exist for medication_reminders
+                try {
+                    jdbcTemplate.execute("ALTER TABLE medication_reminders ADD COLUMN IF NOT EXISTS snooze_count INTEGER DEFAULT 0");
+                    jdbcTemplate.execute("ALTER TABLE medication_reminders ADD COLUMN IF NOT EXISTS snooze_until TIMESTAMP");
+                    logger.info("Verified medication_reminders table schema columns (snooze_count, snooze_until)");
+                } catch (Exception se) {
+                    logger.warn("Could not alter medication_reminders table: {}", se.getMessage());
+                }
+
                 // Always ensure Super Admin account exists
                 if (userRepo.findByEmailIgnoreCase("admin@mediassist.com").isEmpty()) {
                     com.med.assistant.model.User admin = new com.med.assistant.model.User(
