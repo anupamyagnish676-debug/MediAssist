@@ -94,10 +94,16 @@
     <div class="main-content">
         <div class="topbar" style="display: flex; justify-content: space-between; align-items: center;">
             <h1 class="page-title" id="page-title">Dashboard</h1>
-            <button id="reset-all-data-btn" class="btn btn-red" onclick="resetAllPortalData()" style="padding: 0.5rem 1rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem;">
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                Clear All Portal Data
-            </button>
+            <div style="display: flex; gap: 0.75rem;">
+                <button id="seed-demo-btn" class="btn btn-blue" onclick="seedDemoData()" style="padding: 0.5rem 1rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                    Load Demo Data
+                </button>
+                <button id="reset-all-data-btn" class="btn btn-red" onclick="resetAllPortalData()" style="padding: 0.5rem 1rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    Clear All Portal Data
+                </button>
+            </div>
         </div>
         
         <div class="content-area">
@@ -463,6 +469,37 @@
                 }
             } catch(e) { console.error(e); }
         });
+
+        async function seedDemoData() {
+            if (!confirm('Load sample hospitals and doctors into the platform? This will populate City Care, Apollo Metro, and Sunrise Children Hospital with doctors so the WhatsApp Simulator can book appointments.')) return;
+
+            const btn = document.getElementById('seed-demo-btn');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Loading...';
+            }
+
+            try {
+                const res = await fetch('/api/v1/admin/data/seed-demo', { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    showToast(data.message || 'Sample hospitals and doctors loaded successfully!');
+                    loadDashboardData();
+                    loadApplications();
+                    loadHospitals();
+                    loadUsers();
+                } else {
+                    showToast(data.message || 'Failed to load demo data.', 'error');
+                }
+            } catch (e) {
+                showToast('Network error while loading demo data.', 'error');
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = `<svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg> Load Demo Data`;
+                }
+            }
+        }
 
         async function resetAllPortalData() {
             const confirmed = confirm(

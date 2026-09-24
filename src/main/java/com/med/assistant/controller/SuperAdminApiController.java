@@ -483,6 +483,80 @@ public class SuperAdminApiController {
         ));
     }
 
+    @PostMapping("/data/seed-demo")
+    @Transactional
+    public ResponseEntity<?> seedDemoData() {
+        if (hospitalRepository.count() > 0) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Hospitals already exist in the database. Please clear existing data first if you want to re-seed demo data."));
+        }
+
+        // 1. Hospital 1: City Care
+        Hospital h1 = new Hospital(
+                "City Care Multispeciality Hospital",
+                "104 Health Avenue, Central District",
+                28.6139, 77.2090,
+                "+1 800-555-0199",
+                "#0284c7"
+        );
+        h1.setStatus(Hospital.Status.ACTIVE);
+        h1.setActive(true);
+        hospitalRepository.save(h1);
+
+        Doctor d1 = new Doctor("Dr. Sarah Jenkins", "Cardiology", h1, 30, 60.0);
+        d1.setRoomNumber("201");
+        Doctor d2 = new Doctor("Dr. Rajiv Mehta", "Pediatrics", h1, 25, 45.0);
+        d2.setRoomNumber("105");
+        Doctor d3 = new Doctor("Dr. Elena Rostova", "General Medicine", h1, 40, 35.0);
+        d3.setRoomNumber("101");
+        doctorRepository.saveAll(List.of(d1, d2, d3));
+
+        // 2. Hospital 2: Apollo Metro
+        Hospital h2 = new Hospital(
+                "Apollo Metro Health Clinic",
+                "58 Parkside Plaza, North Wing",
+                28.6250, 77.2150,
+                "+1 800-555-0244",
+                "#0d9488"
+        );
+        h2.setStatus(Hospital.Status.ACTIVE);
+        h2.setActive(true);
+        hospitalRepository.save(h2);
+
+        Doctor d4 = new Doctor("Dr. Michael Chang", "Orthopedics", h2, 20, 70.0);
+        d4.setRoomNumber("302");
+        Doctor d5 = new Doctor("Dr. Aisha Patel", "Dermatology", h2, 25, 50.0);
+        d5.setRoomNumber("204");
+        doctorRepository.saveAll(List.of(d4, d5));
+
+        // 3. Hospital 3: Sunrise Children & Family
+        Hospital h3 = new Hospital(
+                "Sunrise Children & Family Hospital",
+                "12 Riverbank Road, South Extension",
+                28.6010, 77.1950,
+                "+1 800-555-0377",
+                "#f97316"
+        );
+        h3.setStatus(Hospital.Status.ACTIVE);
+        h3.setActive(true);
+        hospitalRepository.save(h3);
+
+        Doctor d6 = new Doctor("Dr. David Miller", "General Medicine", h3, 35, 40.0);
+        d6.setRoomNumber("102");
+        doctorRepository.save(d6);
+
+        // Managers
+        User m1 = new User("manager@citycare.com", passwordEncoder.encode("Manager@123"), "City Care Manager", User.Role.HOSPITAL_MANAGER, h1);
+        User m2 = new User("manager@apollo.com", passwordEncoder.encode("Manager@123"), "Apollo Clinic Incharge", User.Role.HOSPITAL_MANAGER, h2);
+        userRepository.saveAll(List.of(m1, m2));
+
+        logger.info("Sample hospitals and doctors seeded successfully!");
+
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Sample hospitals, doctors, and manager accounts have been restored! WhatsApp Simulator and booking flows are ready."
+        ));
+    }
+
     private void userRepoSave(User admin) {
         userRepository.save(admin);
     }

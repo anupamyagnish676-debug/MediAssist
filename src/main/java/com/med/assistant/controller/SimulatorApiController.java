@@ -80,8 +80,12 @@ public class SimulatorApiController {
 
             List<LocationService.NearbyHospitalResult> nearby = locationService.findNearbyHospitals(lat, lon, 25.0);
             if (nearby.isEmpty()) {
+                // If no hospital within 25km, expand search so simulator works regardless of GPS location
+                nearby = locationService.findNearbyHospitals(lat, lon, 25000.0);
+            }
+            if (nearby.isEmpty()) {
                 return ResponseEntity.ok(new SimulatorResponse(
-                        "No registered hospitals found within 25 km of your location.",
+                        "🏥 No registered hospitals found in the network yet.\n\nTo test doctor bookings and QR token slips, please onboard a hospital or click 'Load Demo Data' in the Admin Portal.",
                         "text", null, null, null, null));
             }
 
