@@ -147,6 +147,10 @@
                                 <label>Daily Token Limit</label>
                                 <input type="number" id="doc-limit" required>
                             </div>
+                            <div class="form-group">
+                                <label>Available Time (e.g. 10:00 AM - 2:00 PM)</label>
+                                <input type="text" id="doc-available-time" placeholder="10:00 AM - 2:00 PM">
+                            </div>
                         </div>
                         <div class="flex-actions" style="margin-top: 1rem;">
                             <button type="submit" class="btn btn-blue">Save Doctor</button>
@@ -162,6 +166,7 @@
                                 <th>Room</th>
                                 <th>Fee</th>
                                 <th>Limit</th>
+                                <th>Available Time</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -315,9 +320,11 @@
                             <td>${d.roomNumber || '-'}</td>
                             <td>₹${d.consultationFee}</td>
                             <td>${d.dailyTokenLimit}</td>
+                            <td>${d.availableTime || 'Not Set'}</td>
                             <td><span class="badge ${isAvail ? 'badge-active' : 'badge-inactive'}">${isAvail ? 'Available' : 'Unavailable'}</span></td>
                             <td>
                                 <div class="flex-actions">
+                                    <button class="btn btn-blue" onclick="editDocTime(${d.id}, '${(d.availableTime||'').replace(/'/g, "\\'")}')">Edit</button>
                                     <button class="btn btn-gray" onclick="toggleDoc(${d.id})">Toggle</button>
                                     <button class="btn btn-red" onclick="deleteDoc(${d.id})">Del</button>
                                 </div>
@@ -357,6 +364,7 @@
                 roomNumber: document.getElementById('doc-room').value,
                 consultationFee: parseFloat(document.getElementById('doc-fee').value),
                 dailyTokenLimit: parseInt(document.getElementById('doc-limit').value),
+                availableTime: document.getElementById('doc-available-time').value,
                 available: true
             };
             try {
@@ -389,6 +397,22 @@
                 loadDoctors();
                 loadDashboardData();
             } catch(e) {}
+        }
+
+        async function editDocTime(id, currentTime) {
+            const newTime = prompt('Enter doctor available time (e.g. 10:00 AM - 2:00 PM):', currentTime);
+            if (newTime === null) return;
+            try {
+                const res = await fetch(`/api/v1/hospital-manager/doctors/${id}/schedule`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ availableTime: newTime, consultationFee: -1, dailyTokenLimit: -1 })
+                });
+                if (res.ok) {
+                    showToast('Available time updated');
+                    loadDoctors();
+                }
+            } catch(e) { console.error(e); }
         }
 
         function fillSettings() {

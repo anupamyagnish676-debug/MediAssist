@@ -22,6 +22,7 @@ public class Doctor {
     private boolean availableToday = true;
     private String roomNumber = "101";
     private double consultationFee = 500.0;
+    private String availableTime; // e.g. "10:00 AM - 2:00 PM"
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "hospital_id")
@@ -66,6 +67,9 @@ public class Doctor {
 
     public double getConsultationFee() { return consultationFee; }
     public void setConsultationFee(double consultationFee) { this.consultationFee = consultationFee; }
+
+    public String getAvailableTime() { return availableTime; }
+    public void setAvailableTime(String availableTime) { this.availableTime = availableTime; }
 
     public Hospital getHospital() { return hospital; }
     public void setHospital(Hospital hospital) { this.hospital = hospital; }

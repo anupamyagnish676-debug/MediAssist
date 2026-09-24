@@ -70,23 +70,34 @@ public class AppointmentSlipPdfService {
 
     @SuppressWarnings("deprecation")
     private byte[] buildPdf(Appointment appointment) throws Exception {
+        // --- Extract data ---
         String hospitalName = appointment.getHospital() != null ? appointment.getHospital().getName() : "MedAssist Partner Hospital";
         String hospitalAddr = appointment.getHospital() != null ? appointment.getHospital().getAddress() : "Central OPD Wing";
         String hospitalPhone = appointment.getHospital() != null ? appointment.getHospital().getPhone() : "+1 800-555-0199";
         String doctorName = appointment.getDoctor() != null ? appointment.getDoctor().getName() : "Duty Physician";
         String department = appointment.getDoctor() != null ? appointment.getDoctor().getDepartment() : "General OPD";
         String room = appointment.getDoctor() != null && appointment.getDoctor().getRoomNumber() != null ? appointment.getDoctor().getRoomNumber() : "101";
+        String patientName = appointment.getPatientName() != null ? appointment.getPatientName() : "Walk-in Patient";
         String patientPhone = appointment.getPatientPhone() != null ? appointment.getPatientPhone() : "+91 9876543210";
         String dateStr = appointment.getAppointmentDate() != null ? appointment.getAppointmentDate().format(DateTimeFormatter.ofPattern("dd MMMM yyyy")) : "Today";
         String timeSlot = appointment.getTimeSlot() != null ? appointment.getTimeSlot() : "11:00 AM";
         String token = String.format("#%02d", appointment.getSerialNumber());
         String qrToken = appointment.getQrCodeToken() != null ? appointment.getQrCodeToken() : UUID.randomUUID().toString().substring(0, 8);
         double fee = appointment.getDoctor() != null ? appointment.getDoctor().getConsultationFee() : 50.0;
+        String availableTime = appointment.getDoctor() != null ? appointment.getDoctor().getAvailableTime() : null;
 
-        // PDFBox 2.x uses static fields for standard fonts
+        // --- Colors ---
+        int[] primaryBlue = {2, 132, 199};
+        int[] darkText = {15, 23, 42};
+        int[] mutedText = {100, 116, 139};
+        int[] white = {255, 255, 255};
+        int[] lightBg = {241, 245, 249};
+        int[] sectionHeaderBg = {240, 249, 255};
+        int[] separatorColor = {226, 232, 240};
+
+        // --- Fonts ---
         PDType1Font fontBold = PDType1Font.HELVETICA_BOLD;
         PDType1Font fontRegular = PDType1Font.HELVETICA;
-        PDType1Font fontItalic = PDType1Font.HELVETICA_OBLIQUE;
 
         try (PDDocument doc = new PDDocument()) {
             PDPage page = new PDPage(PDRectangle.A5);
@@ -94,192 +105,272 @@ public class AppointmentSlipPdfService {
 
             float pageWidth = page.getMediaBox().getWidth();
             float pageHeight = page.getMediaBox().getHeight();
-            float margin = 40;
+            float margin = 32;
             float contentWidth = pageWidth - 2 * margin;
 
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
-                float y = pageHeight - margin;
+                float y = pageHeight;
 
-                // === HEADER: Hospital Name ===
-                cs.setNonStrokingColor(2, 132, 199);
+                // ============================================================
+                // 1. BLUE HEADER BAR
+                // ============================================================
+                float headerHeight = 60;
+                cs.setNonStrokingColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
+                cs.addRect(0, y - headerHeight, pageWidth, headerHeight);
+                cs.fill();
+
+                // Hospital name (white, bold)
+                cs.setNonStrokingColor(white[0], white[1], white[2]);
                 cs.beginText();
-                cs.setFont(fontBold, 14);
-                cs.newLineAtOffset(margin, y);
+                cs.setFont(fontBold, 15);
+                float hospNameWidth = fontBold.getStringWidth(truncate(hospitalName, 40)) / 1000 * 15;
+                cs.newLineAtOffset((pageWidth - hospNameWidth) / 2, y - 24);
                 cs.showText(truncate(hospitalName, 40));
                 cs.endText();
-                y -= 16;
 
-                // Hospital Address
-                cs.setNonStrokingColor(100, 116, 139);
+                // Address & phone (lighter white)
+                cs.setNonStrokingColor(200, 225, 245);
                 cs.beginText();
                 cs.setFont(fontRegular, 8);
-                cs.newLineAtOffset(margin, y);
-                cs.showText(truncate(hospitalAddr, 60));
+                String headerSubline = truncate(hospitalAddr, 50) + "  |  " + truncate(hospitalPhone, 25);
+                float sublineWidth = fontRegular.getStringWidth(headerSubline) / 1000 * 8;
+                cs.newLineAtOffset((pageWidth - sublineWidth) / 2, y - 40);
+                cs.showText(headerSubline);
                 cs.endText();
+
+                y -= headerHeight;
+
+                // ============================================================
+                // 2. "OPD APPOINTMENT SLIP" TITLE
+                // ============================================================
+                y -= 22;
+                cs.setNonStrokingColor(darkText[0], darkText[1], darkText[2]);
+                cs.beginText();
+                cs.setFont(fontBold, 13);
+                String title = "OPD APPOINTMENT SLIP";
+                float titleWidth = fontBold.getStringWidth(title) / 1000 * 13;
+                cs.newLineAtOffset((pageWidth - titleWidth) / 2, y);
+                cs.showText(title);
+                cs.endText();
+
                 y -= 12;
 
-                // Hospital Phone
-                cs.beginText();
-                cs.setFont(fontRegular, 8);
-                cs.newLineAtOffset(margin, y);
-                cs.showText("Emergency Helpline: " + truncate(hospitalPhone, 30));
-                cs.endText();
-                y -= 8;
-
-                // "OFFICIAL SLIP" badge (right-aligned)
-                cs.setNonStrokingColor(224, 242, 254);
-                cs.addRect(pageWidth - margin - 80, y + 4, 80, 16);
-                cs.fill();
-                cs.setNonStrokingColor(3, 105, 161);
-                cs.beginText();
-                cs.setFont(fontBold, 7);
-                cs.newLineAtOffset(pageWidth - margin - 72, y + 9);
-                cs.showText("OFFICIAL SLIP");
-                cs.endText();
-
-                y -= 6;
-
-                // === Divider line ===
-                cs.setStrokingColor(2, 132, 199);
-                cs.setLineWidth(2);
+                // Separator
+                cs.setStrokingColor(separatorColor[0], separatorColor[1], separatorColor[2]);
+                cs.setLineWidth(1f);
                 cs.moveTo(margin, y);
                 cs.lineTo(pageWidth - margin, y);
                 cs.stroke();
-                y -= 25;
 
-                // === TOKEN BOX ===
-                float boxHeight = 70;
-                cs.setNonStrokingColor(240, 249, 255);
-                cs.addRect(margin, y - boxHeight, contentWidth, boxHeight);
+                y -= 10;
+
+                // ============================================================
+                // 3. PATIENT INFORMATION SECTION
+                // ============================================================
+                // Section header background
+                float sectionHeaderHeight = 18;
+                cs.setNonStrokingColor(sectionHeaderBg[0], sectionHeaderBg[1], sectionHeaderBg[2]);
+                cs.addRect(margin, y - sectionHeaderHeight, contentWidth, sectionHeaderHeight);
                 cs.fill();
 
-                cs.setStrokingColor(2, 132, 199);
-                cs.setLineWidth(1.5f);
-                cs.setLineDashPattern(new float[]{4, 3}, 0);
-                cs.addRect(margin, y - boxHeight, contentWidth, boxHeight);
-                cs.stroke();
-                cs.setLineDashPattern(new float[]{}, 0);
-
-                // "YOUR APPOINTMENT TOKEN" label
-                cs.setNonStrokingColor(3, 105, 161);
+                cs.setNonStrokingColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
                 cs.beginText();
-                cs.setFont(fontBold, 8);
-                float labelWidth = fontBold.getStringWidth("YOUR APPOINTMENT TOKEN") / 1000 * 8;
-                cs.newLineAtOffset(margin + (contentWidth - labelWidth) / 2, y - 18);
-                cs.showText("YOUR APPOINTMENT TOKEN");
+                cs.setFont(fontBold, 9);
+                cs.newLineAtOffset(margin + 8, y - 13);
+                cs.showText("PATIENT INFORMATION");
                 cs.endText();
 
-                // Token number (large)
-                cs.setNonStrokingColor(2, 132, 199);
+                y -= sectionHeaderHeight + 8;
+
+                // Patient Name
+                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Patient Name:", truncate(patientName, 35), darkText, mutedText);
+                y -= 18;
+
+                // Patient Mobile
+                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Patient Mobile:", truncate(patientPhone, 25), darkText, mutedText);
+                y -= 14;
+
+                // Separator
+                cs.setStrokingColor(separatorColor[0], separatorColor[1], separatorColor[2]);
+                cs.setLineWidth(0.5f);
+                cs.moveTo(margin, y);
+                cs.lineTo(pageWidth - margin, y);
+                cs.stroke();
+
+                y -= 10;
+
+                // ============================================================
+                // 4. APPOINTMENT DETAILS SECTION
+                // ============================================================
+                cs.setNonStrokingColor(sectionHeaderBg[0], sectionHeaderBg[1], sectionHeaderBg[2]);
+                cs.addRect(margin, y - sectionHeaderHeight, contentWidth, sectionHeaderHeight);
+                cs.fill();
+
+                cs.setNonStrokingColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
                 cs.beginText();
-                cs.setFont(fontBold, 32);
-                float tokenWidth = fontBold.getStringWidth(token) / 1000 * 32;
-                cs.newLineAtOffset(margin + (contentWidth - tokenWidth) / 2, y - 50);
+                cs.setFont(fontBold, 9);
+                cs.newLineAtOffset(margin + 8, y - 13);
+                cs.showText("APPOINTMENT DETAILS");
+                cs.endText();
+
+                y -= sectionHeaderHeight + 10;
+
+                // --- Token Number (prominent, in colored box) ---
+                float tokenBoxWidth = 140;
+                float tokenBoxHeight = 44;
+                float tokenBoxX = margin + (contentWidth - tokenBoxWidth) / 2;
+
+                // Token box background
+                cs.setNonStrokingColor(sectionHeaderBg[0], sectionHeaderBg[1], sectionHeaderBg[2]);
+                cs.addRect(tokenBoxX, y - tokenBoxHeight, tokenBoxWidth, tokenBoxHeight);
+                cs.fill();
+
+                // Token box border
+                cs.setStrokingColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
+                cs.setLineWidth(1.5f);
+                cs.addRect(tokenBoxX, y - tokenBoxHeight, tokenBoxWidth, tokenBoxHeight);
+                cs.stroke();
+
+                // "Token Number" label
+                cs.setNonStrokingColor(mutedText[0], mutedText[1], mutedText[2]);
+                cs.beginText();
+                cs.setFont(fontRegular, 7);
+                String tokenLabel = "Token Number";
+                float tokenLabelW = fontRegular.getStringWidth(tokenLabel) / 1000 * 7;
+                cs.newLineAtOffset(tokenBoxX + (tokenBoxWidth - tokenLabelW) / 2, y - 12);
+                cs.showText(tokenLabel);
+                cs.endText();
+
+                // Token value (large)
+                cs.setNonStrokingColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
+                cs.beginText();
+                cs.setFont(fontBold, 24);
+                float tokenValW = fontBold.getStringWidth(token) / 1000 * 24;
+                cs.newLineAtOffset(tokenBoxX + (tokenBoxWidth - tokenValW) / 2, y - 36);
                 cs.showText(token);
                 cs.endText();
 
-                // "Please arrive 15 minutes..." note
-                cs.setNonStrokingColor(100, 116, 139);
-                cs.beginText();
-                cs.setFont(fontRegular, 7);
-                String arriveNote = "Please arrive 15 minutes before your scheduled slot";
-                float arriveWidth = fontRegular.getStringWidth(arriveNote) / 1000 * 7;
-                cs.newLineAtOffset(margin + (contentWidth - arriveWidth) / 2, y - boxHeight + 8);
-                cs.showText(arriveNote);
-                cs.endText();
+                y -= tokenBoxHeight + 12;
 
-                y -= boxHeight + 20;
+                // Date & Time
+                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Date & Time:", dateStr + " at " + timeSlot, darkText, mutedText);
+                y -= 18;
 
-                // === DETAILS TABLE ===
-                String[][] rows = {
-                    {"Consulting Doctor:", doctorName + " (" + department + ")"},
-                    {"OPD Room:", "Room " + room},
-                    {"Date & Time:", dateStr + " at " + timeSlot},
-                    {"Patient Mobile:", patientPhone},
-                    {"Consultation Fee:", "$" + String.format("%.2f", fee) + " (Pay at front desk)"}
-                };
+                // Consulting Doctor & Department
+                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Consulting Doctor:", truncate(doctorName + " (" + department + ")", 40), darkText, mutedText);
+                y -= 18;
 
-                for (String[] row : rows) {
-                    cs.setStrokingColor(226, 232, 240);
-                    cs.setLineWidth(0.5f);
-                    cs.moveTo(margin, y);
-                    cs.lineTo(pageWidth - margin, y);
-                    cs.stroke();
-                    y -= 5;
+                // OPD Room
+                drawLabelValue(cs, fontBold, fontRegular, margin, y, "OPD Room:", "Room " + room, darkText, mutedText);
+                y -= 18;
 
-                    cs.setNonStrokingColor(71, 85, 105);
-                    cs.beginText();
-                    cs.setFont(fontBold, 9);
-                    cs.newLineAtOffset(margin + 5, y - 10);
-                    cs.showText(row[0]);
-                    cs.endText();
+                // Consultation Fee
+                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Consultation Fee:", "\u20B9 " + String.format("%.2f", fee), darkText, mutedText);
+                y -= 18;
 
-                    cs.setNonStrokingColor(15, 23, 42);
-                    cs.beginText();
-                    cs.setFont(fontRegular, 9);
-                    cs.newLineAtOffset(margin + 125, y - 10);
-                    cs.showText(truncate(row[1], 40));
-                    cs.endText();
-
-                    y -= 22;
+                // Doctor Available Time (only if not null)
+                if (availableTime != null) {
+                    drawLabelValue(cs, fontBold, fontRegular, margin, y, "Doctor Available:", truncate(availableTime, 35), darkText, mutedText);
+                    y -= 18;
                 }
 
-                // Final separator
-                cs.setStrokingColor(226, 232, 240);
+                y -= 4;
+
+                // Separator
+                cs.setStrokingColor(separatorColor[0], separatorColor[1], separatorColor[2]);
                 cs.setLineWidth(0.5f);
                 cs.moveTo(margin, y);
                 cs.lineTo(pageWidth - margin, y);
                 cs.stroke();
-                y -= 20;
 
-                // === QR CODE SECTION ===
-                cs.setNonStrokingColor(248, 250, 252);
-                cs.addRect(margin, y - 130, contentWidth, 130);
-                cs.fill();
+                y -= 10;
 
-                // Generate QR code in-memory
+                // ============================================================
+                // 5. QR CODE SECTION
+                // ============================================================
                 BufferedImage qrImage = generateQrImage("APPT:" + qrToken, 200, 200);
                 PDImageXObject pdImage = LosslessFactory.createFromImage(doc, qrImage);
 
-                float qrSize = 90;
+                float qrSize = 80;
                 float qrX = margin + (contentWidth - qrSize) / 2;
-                cs.drawImage(pdImage, qrX, y - 105, qrSize, qrSize);
+                cs.drawImage(pdImage, qrX, y - qrSize, qrSize, qrSize);
 
-                // "Scan at the Reception Desk..." text
-                cs.setNonStrokingColor(100, 116, 139);
+                y -= qrSize + 6;
+
+                // "Scan for Quick Check-In" text
+                cs.setNonStrokingColor(mutedText[0], mutedText[1], mutedText[2]);
                 cs.beginText();
                 cs.setFont(fontRegular, 7);
-                String scanText = "Scan at the Reception Desk for Instant Check-In";
+                String scanText = "Scan for Quick Check-In";
                 float scanWidth = fontRegular.getStringWidth(scanText) / 1000 * 7;
-                cs.newLineAtOffset(margin + (contentWidth - scanWidth) / 2, y - 118);
+                cs.newLineAtOffset((pageWidth - scanWidth) / 2, y);
                 cs.showText(scanText);
                 cs.endText();
 
-                // QR token code
-                cs.setNonStrokingColor(148, 163, 184);
-                cs.beginText();
-                cs.setFont(fontRegular, 7);
-                float qrTokenWidth = fontRegular.getStringWidth(qrToken) / 1000 * 7;
-                cs.newLineAtOffset(margin + (contentWidth - qrTokenWidth) / 2, y - 128);
-                cs.showText(qrToken);
-                cs.endText();
+                y -= 14;
 
-                y -= 145;
-
-                // === FOOTER ===
-                cs.setStrokingColor(241, 245, 249);
+                // Separator
+                cs.setStrokingColor(separatorColor[0], separatorColor[1], separatorColor[2]);
                 cs.setLineWidth(0.5f);
                 cs.moveTo(margin, y);
                 cs.lineTo(pageWidth - margin, y);
                 cs.stroke();
+
+                y -= 10;
+
+                // ============================================================
+                // 6. IMPORTANT INSTRUCTIONS SECTION
+                // ============================================================
+                cs.setNonStrokingColor(sectionHeaderBg[0], sectionHeaderBg[1], sectionHeaderBg[2]);
+                cs.addRect(margin, y - sectionHeaderHeight, contentWidth, sectionHeaderHeight);
+                cs.fill();
+
+                cs.setNonStrokingColor(primaryBlue[0], primaryBlue[1], primaryBlue[2]);
+                cs.beginText();
+                cs.setFont(fontBold, 9);
+                cs.newLineAtOffset(margin + 8, y - 13);
+                cs.showText("IMPORTANT INSTRUCTIONS");
+                cs.endText();
+
+                y -= sectionHeaderHeight + 8;
+
+                String[] instructions = {
+                    "Please arrive 15 minutes before your appointment",
+                    "Carry this slip and a valid ID proof",
+                    "This slip is valid only for the date mentioned",
+                    "For cancellation, contact the hospital helpline"
+                };
+
+                cs.setNonStrokingColor(darkText[0], darkText[1], darkText[2]);
+                for (String instruction : instructions) {
+                    cs.beginText();
+                    cs.setFont(fontRegular, 7);
+                    cs.newLineAtOffset(margin + 8, y);
+                    cs.showText("\u2022  " + instruction);
+                    cs.endText();
+                    y -= 13;
+                }
+
+                y -= 6;
+
+                // Separator
+                cs.setStrokingColor(separatorColor[0], separatorColor[1], separatorColor[2]);
+                cs.setLineWidth(0.5f);
+                cs.moveTo(margin, y);
+                cs.lineTo(pageWidth - margin, y);
+                cs.stroke();
+
                 y -= 12;
 
-                cs.setNonStrokingColor(148, 163, 184);
+                // ============================================================
+                // 7. FOOTER
+                // ============================================================
+                cs.setNonStrokingColor(mutedText[0], mutedText[1], mutedText[2]);
                 cs.beginText();
-                cs.setFont(fontItalic, 6);
-                String footer = "Generated via WhatsApp Medical Assistant - Valid only for the date mentioned above.";
-                float footerWidth = fontItalic.getStringWidth(footer) / 1000 * 6;
-                cs.newLineAtOffset(margin + (contentWidth - footerWidth) / 2, y);
+                cs.setFont(fontRegular, 7);
+                String footer = "Powered by MediAssist | www.mediassist.com";
+                float footerWidth = fontRegular.getStringWidth(footer) / 1000 * 7;
+                cs.newLineAtOffset((pageWidth - footerWidth) / 2, y);
                 cs.showText(footer);
                 cs.endText();
             }
@@ -288,6 +379,28 @@ public class AppointmentSlipPdfService {
             doc.save(baos);
             return baos.toByteArray();
         }
+    }
+
+    /**
+     * Helper to draw a label-value pair on a single line.
+     */
+    @SuppressWarnings("deprecation")
+    private void drawLabelValue(PDPageContentStream cs, PDType1Font fontBold, PDType1Font fontRegular,
+                                float margin, float y, String label, String value,
+                                int[] darkText, int[] mutedText) throws java.io.IOException {
+        cs.setNonStrokingColor(mutedText[0], mutedText[1], mutedText[2]);
+        cs.beginText();
+        cs.setFont(fontBold, 8);
+        cs.newLineAtOffset(margin + 8, y);
+        cs.showText(label);
+        cs.endText();
+
+        cs.setNonStrokingColor(darkText[0], darkText[1], darkText[2]);
+        cs.beginText();
+        cs.setFont(fontRegular, 9);
+        cs.newLineAtOffset(margin + 120, y);
+        cs.showText(value);
+        cs.endText();
     }
 
     private BufferedImage generateQrImage(String content, int width, int height) throws Exception {

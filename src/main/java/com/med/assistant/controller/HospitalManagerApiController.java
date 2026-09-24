@@ -54,8 +54,8 @@ public class HospitalManagerApiController {
         return manager.getHospital();
     }
 
-    public record AddDoctorRequest(String name, String department, String roomNumber, double consultationFee, int dailyTokenLimit) {}
-    public record UpdateScheduleRequest(String roomNumber, double consultationFee, int dailyTokenLimit) {}
+    public record AddDoctorRequest(String name, String department, String roomNumber, double consultationFee, int dailyTokenLimit, String availableTime) {}
+    public record UpdateScheduleRequest(String roomNumber, double consultationFee, int dailyTokenLimit, String availableTime) {}
     public record UpdateHospitalSettingsRequest(String name, String address, String phone, String brandColor) {}
 
     /**
@@ -98,6 +98,7 @@ public class HospitalManagerApiController {
         Doctor doc = new Doctor(req.name(), req.department(), h,
                 req.dailyTokenLimit() > 0 ? req.dailyTokenLimit() : 25, req.consultationFee());
         doc.setRoomNumber(req.roomNumber() != null ? req.roomNumber() : "101");
+        if (req.availableTime() != null && !req.availableTime().isBlank()) doc.setAvailableTime(req.availableTime());
         return ResponseEntity.ok(doctorRepository.save(doc));
     }
 
@@ -158,6 +159,7 @@ public class HospitalManagerApiController {
         if (req.roomNumber() != null && !req.roomNumber().isBlank()) doc.setRoomNumber(req.roomNumber());
         if (req.consultationFee() >= 0) doc.setConsultationFee(req.consultationFee());
         if (req.dailyTokenLimit() > 0) doc.setDailyTokenLimit(req.dailyTokenLimit());
+        if (req.availableTime() != null && !req.availableTime().isBlank()) doc.setAvailableTime(req.availableTime());
 
         doctorRepository.save(doc);
         return ResponseEntity.ok(doc);
