@@ -105,6 +105,54 @@ public class WhatsAppClientService {
         postToWhatsApp(payload);
     }
 
+    /**
+     * Downloads user-uploaded media (prescriptions, lab reports, photos) from Meta WhatsApp Cloud API.
+     */
+    public byte[] downloadMedia(String mediaId) {
+        String token = resolveAccessToken();
+        if (token == null || token.isBlank() || mediaId == null || mediaId.isBlank()) {
+            logger.warn("Cannot download media: missing token or mediaId={}", mediaId);
+            return null;
+        }
+
+        try {
+            // 1. Fetch media metadata URL from Meta Graph API
+            String metaMediaEndpoint = apiUrl + "/" + mediaId;
+            logger.info("Fetching media metadata from: {}", metaMediaEndpoint);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setBearerAuth(token);
+            headers.set("User-Agent", "curl/7.64.1");
+            HttpEntity<?> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<Map> metaResponse = restTemplate.exchange(
+                    metaMediaEndpoint, HttpMethod.GET, entity, Map.class
+            );
+
+            Map<String, Object> body = metaResponse.getBody();
+            if (body == null || !body.containsKey("url")) {
+                logger.warn("Meta returned empty media info for media ID: {}", mediaId);
+                return null;
+            }
+
+            String mediaDownloadUrl = (String) body.get("url");
+            logger.info("Downloading media content from CDN URL: {}", mediaDownloadUrl);
+
+            // 2. Fetch the actual binary payload from Meta CDN URL using auth header
+            ResponseEntity<byte[]> downloadResponse = restTemplate.exchange(
+                    mediaDownloadUrl, HttpMethod.GET, entity, byte[].class
+            );
+
+            byte[] mediaBytes = downloadResponse.getBody();
+            logger.info("Successfully downloaded {} bytes for media ID: {}", mediaBytes != null ? mediaBytes.length : 0, mediaId);
+            return mediaBytes;
+
+        } catch (Exception e) {
+            logger.error("Failed to download WhatsApp media (ID: {}): {}", mediaId, e.getMessage());
+            return null;
+        }
+    }
+
     private String resolveAccessToken() {
         if (accessToken != null && !accessToken.isBlank() && !accessToken.contains("SAMPLE")) {
             return accessToken.trim();

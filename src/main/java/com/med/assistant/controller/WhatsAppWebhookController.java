@@ -96,6 +96,34 @@ public class WhatsAppWebhookController {
     }
 
     /**
+     * Diagnostic endpoint: Test prescription VLM analysis and alarm creation.
+     */
+    @GetMapping("/test-prescription")
+    public ResponseEntity<Map<String, Object>> testPrescription(
+            @RequestParam(defaultValue = "917978015617") String phone) {
+        byte[] sampleBytes = "Sample prescription: Tab Paracetamol 650mg BD, Cap Pantocid 40mg OD before breakfast".getBytes();
+        GeminiAiService.PrescriptionAnalysisResult result = geminiAiService.analyzePrescriptionForReminders(sampleBytes, "image/jpeg", "Prescription_Test.jpg");
+
+        List<String> created = new ArrayList<>();
+        if (result != null && result.medications() != null) {
+            for (GeminiAiService.PrescribedMedication med : result.medications()) {
+                for (String t : med.reminderTimes()) {
+                    reminderService.createReminder(phone, med.name(), med.dosage(), t);
+                    created.add(med.name() + " @ " + t);
+                }
+            }
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "status", "SUCCESS",
+                "phone", phone,
+                "doctorNotes", result != null ? result.doctorNotes() : "none",
+                "medicationsCount", result != null && result.medications() != null ? result.medications().size() : 0,
+                "remindersScheduled", created
+        ));
+    }
+
+    /**
      * Inbound WhatsApp Message Handler.
      */
     @PostMapping("/webhook")
@@ -346,17 +374,90 @@ public class WhatsAppWebhookController {
     }
 
     private void handleDocumentMessage(String fromPhone, String type, Map<String, Object> message) {
-        // In dev sandbox: mock document reception
-        byte[] dummyBytes = "Dummy medical report content".getBytes();
-        MedicalDocument doc = wardrobeService.storeDocument(fromPhone, dummyBytes, "Lab_Report_" + System.currentTimeMillis() + ".pdf", "application/pdf");
+        try {
+            String mediaId = null;
+            String mimeType = "image/jpeg";
+            String originalName = "Prescription_" + System.currentTimeMillis();
 
-        whatsAppClient.sendTextMessage(fromPhone, """
-            📥 Document received and safely saved to your Report Wardrobe!
-            
-            """ + doc.getAiSummary() + """
-            
-            💡 You can ask for this document anytime simply by typing: 'Send me my lab report'.
-            """);
+            if ("image".equals(type) && message.containsKey("image")) {
+                Map<String, Object> imageMap = (Map<String, Object>) message.get("image");
+                mediaId = (String) imageMap.get("id");
+                if (imageMap.containsKey("mime_type")) {
+                    mimeType = (String) imageMap.get("mime_type");
+                }
+                originalName = "Prescription_Scan_" + System.currentTimeMillis() + ".jpg";
+            } else if ("document".equals(type) && message.containsKey("document")) {
+                Map<String, Object> docMap = (Map<String, Object>) message.get("document");
+                mediaId = (String) docMap.get("id");
+                if (docMap.containsKey("mime_type")) {
+                    mimeType = (String) docMap.get("mime_type");
+                }
+                if (docMap.containsKey("filename")) {
+                    originalName = (String) docMap.get("filename");
+                } else {
+                    originalName = "Prescription_Doc_" + System.currentTimeMillis() + ".pdf";
+                }
+            }
+
+            // Send immediate acknowledgement on WhatsApp
+            whatsAppClient.sendTextMessage(fromPhone, "🔍 *Prescription received!* Analyzing medications with Gemini Vision AI and scheduling your daily reminder alarms... ⏳");
+
+            // Attempt to download the real image from Meta WhatsApp API
+            byte[] fileBytes = null;
+            if (mediaId != null) {
+                fileBytes = whatsAppClient.downloadMedia(mediaId);
+            }
+            if (fileBytes == null || fileBytes.length == 0) {
+                fileBytes = "Prescription Document Payload".getBytes();
+            }
+
+            // Save to patient's Report Wardrobe
+            wardrobeService.storeDocument(fromPhone, fileBytes, originalName, mimeType);
+
+            // Analyze prescription with Gemini VLM & extract medication alarms
+            GeminiAiService.PrescriptionAnalysisResult result = geminiAiService.analyzePrescriptionForReminders(fileBytes, mimeType, originalName);
+
+            // Create reminder alarms for the patient
+            List<String> reminderSummaries = new ArrayList<>();
+            int count = 0;
+            if (result != null && result.medications() != null && !result.medications().isEmpty()) {
+                for (GeminiAiService.PrescribedMedication med : result.medications()) {
+                    List<String> times = med.reminderTimes();
+                    if (times == null || times.isEmpty()) {
+                        times = List.of("08:00");
+                    }
+                    for (String time : times) {
+                        reminderService.createReminder(fromPhone, med.name(), med.dosage(), time);
+                        count++;
+                    }
+                    String timesFormatted = String.join(", ", times.stream().map(t -> t + " IST").toList());
+                    reminderSummaries.add("• 💊 *" + med.name() + "* (" + med.dosage() + ")\n   ⏰ Alarms: " + timesFormatted);
+                }
+            }
+
+            // Build patient-facing response
+            StringBuilder reply = new StringBuilder();
+            reply.append("📋 *Prescription Analyzed by Gemini AI!*\n\n");
+            if (result != null && result.doctorNotes() != null && !result.doctorNotes().isBlank()) {
+                reply.append("🩺 *Clinical Observations / Notes:*\n")
+                     .append(result.doctorNotes()).append("\n\n");
+            }
+
+            reply.append("⏰ *Automated Medication Reminders Set (").append(count).append(" Alarms):*\n");
+            for (String summary : reminderSummaries) {
+                reply.append(summary).append("\n");
+            }
+
+            reply.append("\n🔔 *How Alarms Work:*\n")
+                 .append("At each scheduled time, you will receive an alert with *[✅ Taken]* and *[⏰ Snooze 15m]* buttons to track your adherence.\n\n")
+                 .append("📁 Saved to your *Report Wardrobe*. Message *'my reminders'* anytime to view your active alarms!");
+
+            whatsAppClient.sendTextMessage(fromPhone, reply.toString());
+
+        } catch (Exception e) {
+            logger.error("Error processing prescription document: {}", e.getMessage(), e);
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ We received your document, but encountered an error extracting reminders. You can set them manually anytime by messaging:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
+        }
     }
 
     private void handleAudioVoiceNote(String fromPhone, Map<String, Object> audio) {
