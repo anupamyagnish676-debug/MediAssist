@@ -181,7 +181,49 @@ public class WhatsAppWebhookController {
             }
         }
 
-        // 3. General AI Medical Triage & Clinical Triage response
+        // 3. Medication Reminder Commands
+        String lower = body.toLowerCase().trim();
+        if (lower.contains("reminder") || lower.contains("dawa") || lower.contains("remind me")) {
+            if (lower.contains("my reminder") || lower.contains("show reminder") || lower.contains("list reminder") || lower.contains("check reminder")) {
+                var reminders = reminderService.getActiveReminders(fromPhone);
+                if (reminders.isEmpty()) {
+                    whatsAppClient.sendTextMessage(fromPhone, "📋 You have no active medication reminders.\n\nTo schedule one, message me:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
+                } else {
+                    StringBuilder sb = new StringBuilder("📋 *Your Active Medication Reminders:*\n\n");
+                    for (int i = 0; i < reminders.size(); i++) {
+                        var r = reminders.get(i);
+                        sb.append((i + 1)).append(". 💊 *").append(r.getMedicineName()).append("*");
+                        if (r.getDosageInstruction() != null && !r.getDosageInstruction().isBlank()) {
+                            sb.append(" (").append(r.getDosageInstruction()).append(")");
+                        }
+                        sb.append(" at ⏰ ").append(r.getReminderTime()).append(" IST\n");
+                    }
+                    sb.append("\nI will send you a WhatsApp alert with [Taken] and [Snooze] buttons at these times!");
+                    whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+                }
+                return;
+            }
+
+            // Create reminder from text: e.g. "Remind me to take Paracetamol 500mg at 8 PM"
+            if (lower.contains(" at ") || lower.contains(" @ ")) {
+                handleCreateReminderFromText(fromPhone, body);
+                return;
+            } else if (lower.equals("reminder") || lower.equals("reminders")) {
+                whatsAppClient.sendTextMessage(fromPhone, """
+                    💊 *Medication Reminder Setup:*
+                    
+                    You can schedule daily medicine alerts! Just message me:
+                    👉 *"Remind me to take Paracetamol 500mg at 8:00 PM"*
+                    👉 *"Set reminder for Metformin at 9:00 AM"*
+                    👉 *"Remind me to take Dolo at 21:30"*
+                    
+                    Type *"my reminders"* anytime to see your scheduled list!
+                    """);
+                return;
+            }
+        }
+
+        // 4. General AI Medical Triage & Clinical Triage response
         String aiResponse = geminiAiService.askMedicalAi(body, "");
         whatsAppClient.sendTextMessage(fromPhone, aiResponse);
     }
@@ -317,5 +359,62 @@ public class WhatsAppWebhookController {
             • We have noted your symptoms.
             • If you would like to book a doctor, simply share your current location pin via WhatsApp!
             """);
+    }
+
+    private void handleCreateReminderFromText(String fromPhone, String text) {
+        try {
+            String[] parts = text.split("(?i)\\s+(at|@)\\s+");
+            if (parts.length >= 2) {
+                String medicinePart = parts[0].replaceAll("(?i)(remind|me|to|take|set|reminder|for|please|a)", "").trim();
+                if (medicinePart.isBlank()) medicinePart = "Medication";
+
+                String timePart = parts[1].trim();
+                String parsedTime = parseTimeToHHmm(timePart);
+
+                if (parsedTime != null) {
+                    reminderService.createReminder(fromPhone, medicinePart, "Daily Dose", parsedTime);
+                    String reply = """
+                        ✅ *Medication Reminder Saved!*
+                        
+                        💊 *Medicine:* %s
+                        ⏰ *Scheduled Time:* %s (IST)
+                        
+                        Every day at this time, I will send you an interactive WhatsApp alert with *[✅ Taken]* and *[⏰ Snooze 15m]* buttons to track your adherence!
+                        """.formatted(medicinePart, parsedTime);
+                    whatsAppClient.sendTextMessage(fromPhone, reply);
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Could not parse reminder: {}", e.getMessage());
+        }
+
+        whatsAppClient.sendTextMessage(fromPhone, "⚠️ Could not understand the time. Please use format:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
+    }
+
+    private String parseTimeToHHmm(String timeStr) {
+        String clean = timeStr.replaceAll("[^0-9a-zA-Z:]", "").toUpperCase();
+        try {
+            boolean isPm = clean.endsWith("PM");
+            boolean isAm = clean.endsWith("AM");
+            String digits = clean.replaceAll("[A-Z]", "");
+
+            int hours = 0;
+            int mins = 0;
+            if (digits.contains(":")) {
+                String[] p = digits.split(":");
+                hours = Integer.parseInt(p[0]);
+                mins = Integer.parseInt(p[1]);
+            } else {
+                hours = Integer.parseInt(digits);
+            }
+
+            if (isPm && hours < 12) hours += 12;
+            if (isAm && hours == 12) hours = 0;
+
+            return String.format("%02d:%02d", hours, mins);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
