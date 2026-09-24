@@ -275,22 +275,41 @@ public class WhatsAppWebhookController {
 
         // 3. Medication Reminder Commands
         String lower = body.toLowerCase().trim();
-        if (lower.contains("reminder") || lower.contains("dawa") || lower.contains("remind me")) {
-            if (lower.contains("my reminder") || lower.contains("show reminder") || lower.contains("list reminder") || lower.contains("check reminder")) {
+        if (lower.contains("reminder") || lower.contains("dawa") || lower.contains("remind me") || lower.contains("alarm")) {
+            if (lower.contains("my reminder") || lower.contains("show reminder") || lower.contains("list reminder") 
+                    || lower.contains("check reminder") || lower.contains("alarm") || lower.contains("my alarms") || lower.contains("schedule")) {
                 var reminders = reminderService.getActiveReminders(fromPhone);
                 if (reminders.isEmpty()) {
-                    whatsAppClient.sendTextMessage(fromPhone, "📋 You have no active medication reminders.\n\nTo schedule one, message me:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
+                    whatsAppClient.sendTextMessage(fromPhone, "📋 You have no active medication alarms.\n\nTo schedule one, message me:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
                 } else {
-                    StringBuilder sb = new StringBuilder("📋 *Your Active Medication Reminders:*\n\n");
-                    for (int i = 0; i < reminders.size(); i++) {
-                        var r = reminders.get(i);
-                        sb.append((i + 1)).append(". 💊 *").append(r.getMedicineName()).append("*");
-                        if (r.getDosageInstruction() != null && !r.getDosageInstruction().isBlank()) {
-                            sb.append(" (").append(r.getDosageInstruction()).append(")");
+                    // Group reminders by scheduled time node (HH:mm)
+                    Map<String, List<com.med.assistant.model.MedicationReminder>> nodes = reminders.stream()
+                            .collect(java.util.stream.Collectors.groupingBy(
+                                    r -> r.getReminderTime() != null ? r.getReminderTime() : "Unscheduled",
+                                    java.util.TreeMap::new,
+                                    java.util.stream.Collectors.toList()
+                            ));
+
+                    StringBuilder sb = new StringBuilder("⏰ *Your Medication Alarm Nodes & Schedule:*\n\n");
+                    for (Map.Entry<String, List<com.med.assistant.model.MedicationReminder>> entry : nodes.entrySet()) {
+                        String timeNode = entry.getKey();
+                        List<com.med.assistant.model.MedicationReminder> meds = entry.getValue();
+
+                        sb.append("🕒 *Time Node: ").append(timeNode).append(" IST* (")
+                          .append(meds.size()).append(meds.size() == 1 ? " medicine" : " medicines").append(")\n");
+
+                        for (com.med.assistant.model.MedicationReminder r : meds) {
+                            String dosage = (r.getDosageInstruction() != null && !r.getDosageInstruction().isBlank())
+                                    ? " — " + r.getDosageInstruction() : "";
+                            String statusIcon = r.getStatus() == com.med.assistant.model.MedicationReminder.AdherenceStatus.TAKEN ? "✅ Taken"
+                                    : (r.getStatus() == com.med.assistant.model.MedicationReminder.AdherenceStatus.SNOOZED ? "⏰ Snoozed" : "⏳ Active");
+                            sb.append("  • 💊 *").append(r.getMedicineName()).append("*").append(dosage)
+                              .append(" [").append(statusIcon).append("]\n");
                         }
-                        sb.append(" at ⏰ ").append(r.getReminderTime()).append(" IST\n");
+                        sb.append("\n");
                     }
-                    sb.append("\nI will send you a WhatsApp alert with [Taken] and [Snooze] buttons at these times!");
+                    sb.append("🔔 *How Alarms Work:*\n");
+                    sb.append("At each time node, you will receive an alert with *[✅ Taken]*, *[⏰ Snooze 15m]*, and *[⏰ Snooze 30m]* buttons!");
                     whatsAppClient.sendTextMessage(fromPhone, sb.toString());
                 }
                 return;
@@ -300,7 +319,7 @@ public class WhatsAppWebhookController {
             if (lower.contains(" at ") || lower.contains(" @ ")) {
                 handleCreateReminderFromText(fromPhone, body);
                 return;
-            } else if (lower.equals("reminder") || lower.equals("reminders")) {
+            } else if (lower.equals("reminder") || lower.equals("reminders") || lower.equals("alarm") || lower.equals("alarms")) {
                 whatsAppClient.sendTextMessage(fromPhone, """
                     💊 *Medication Reminder Setup:*
                     
@@ -309,7 +328,7 @@ public class WhatsAppWebhookController {
                     👉 *"Set reminder for Metformin at 9:00 AM"*
                     👉 *"Remind me to take Dolo at 21:30"*
                     
-                    Type *"my reminders"* anytime to see your scheduled list!
+                    Type *"my reminders"* or *"my alarms"* anytime to see your scheduled list!
                     """);
                 return;
             }
@@ -355,12 +374,40 @@ public class WhatsAppWebhookController {
                 Long doctorId = Long.parseLong(buttonId.replace("DOC_", ""));
                 bookAppointmentForDoctor(fromPhone, doctorId);
             } else if (buttonId.startsWith("MED_TAKEN_")) {
-                Long reminderId = Long.parseLong(buttonId.replace("MED_TAKEN_", ""));
-                reminderService.markAsTaken(reminderId);
+                String idPayload = buttonId.replace("MED_TAKEN_", "");
+                List<Long> ids = Arrays.stream(idPayload.split("_"))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Long::parseLong)
+                        .toList();
+                reminderService.markBatchAsTaken(ids);
                 whatsAppClient.sendTextMessage(fromPhone, "✅ Logged! Great job taking your medication on time. 🌟");
+            } else if (buttonId.startsWith("MED_SNOOZE_15_")) {
+                String idPayload = buttonId.replace("MED_SNOOZE_15_", "");
+                List<Long> ids = Arrays.stream(idPayload.split("_"))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Long::parseLong)
+                        .toList();
+                reminderService.markBatchAsSnoozed(ids, 15);
+                whatsAppClient.sendTextMessage(fromPhone, "⏰ Snoozed for 15 minutes. We will ring you again! 🔔");
+            } else if (buttonId.startsWith("MED_SNOOZE_30_")) {
+                String idPayload = buttonId.replace("MED_SNOOZE_30_", "");
+                List<Long> ids = Arrays.stream(idPayload.split("_"))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Long::parseLong)
+                        .toList();
+                reminderService.markBatchAsSnoozed(ids, 30);
+                whatsAppClient.sendTextMessage(fromPhone, "⏰ Snoozed for 30 minutes. We will ring you again! 🔔");
             } else if (buttonId.startsWith("MED_SNOOZE_")) {
-                Long reminderId = Long.parseLong(buttonId.replace("MED_SNOOZE_", ""));
-                reminderService.markAsSnoozed(reminderId);
+                String idPayload = buttonId.replace("MED_SNOOZE_", "");
+                List<Long> ids = Arrays.stream(idPayload.split("_"))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Long::parseLong)
+                        .toList();
+                reminderService.markBatchAsSnoozed(ids, 15);
                 whatsAppClient.sendTextMessage(fromPhone, "⏰ Snoozed for 15 minutes. We will remind you again!");
             }
         }

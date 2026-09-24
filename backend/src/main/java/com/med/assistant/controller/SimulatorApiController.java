@@ -174,24 +174,93 @@ public class SimulatorApiController {
             }
 
             if (act.startsWith("MED_TAKEN_")) {
+                String idPayload = act.replace("MED_TAKEN_", "");
+                List<Long> ids = Arrays.stream(idPayload.split("_"))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Long::parseLong)
+                        .toList();
+                reminderService.markBatchAsTaken(ids);
                 return ResponseEntity.ok(new SimulatorResponse(
-                        "✅ Marked as Taken! Great job maintaining your medication schedule. 🌟",
+                        "✅ Marked as Taken (" + ids.size() + " medication" + (ids.size() == 1 ? "" : "s") + ")! Great job adhering to your schedule. 🌟",
                         "text", null, null, null, null));
             }
 
-            if (act.startsWith("MED_SNOOZE_")) {
+            if (act.startsWith("MED_SNOOZE_15_") || act.startsWith("MED_SNOOZE_30_") || act.startsWith("MED_SNOOZE_")) {
+                int minutes = act.startsWith("MED_SNOOZE_30_") ? 30 : 15;
+                String prefix = act.startsWith("MED_SNOOZE_15_") ? "MED_SNOOZE_15_"
+                        : (act.startsWith("MED_SNOOZE_30_") ? "MED_SNOOZE_30_" : "MED_SNOOZE_");
+                String idPayload = act.replace(prefix, "");
+                List<Long> ids = Arrays.stream(idPayload.split("_"))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .map(Long::parseLong)
+                        .toList();
+                reminderService.markBatchAsSnoozed(ids, minutes);
                 return ResponseEntity.ok(new SimulatorResponse(
-                        "⏰ Snoozed for 15 minutes. We will remind you again shortly!",
+                        "⏰ Snoozed for " + minutes + " minutes! Your alarm is set and will alert you again when due. 🔔",
                         "text", null, null, null, null));
             }
         }
 
         // 3. Text Message Simulation
         String query = req.text() != null ? req.text().trim() : "";
+        String lower = query.toLowerCase();
 
         if (geminiAiService.isEmergency(query)) {
             return ResponseEntity.ok(new SimulatorResponse(
                     geminiAiService.getEmergencyResponse(), "text", null, null, null, null));
+        }
+
+        if (lower.contains("my reminder") || lower.contains("show reminder") || lower.contains("list reminder")
+                || lower.contains("my alarms") || lower.contains("show alarms") || lower.equals("alarms") || lower.equals("reminders")) {
+            var reminders = reminderService.getActiveReminders(phone);
+            if (reminders.isEmpty()) {
+                return ResponseEntity.ok(new SimulatorResponse(
+                        "📋 You have no active medication alarms.\n\nTo schedule one, type:\n👉 'Remind me to take Paracetamol at 8:00 PM'",
+                        "text", null, null, null, null));
+            }
+
+            Map<String, List<com.med.assistant.model.MedicationReminder>> nodes = reminders.stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            r -> r.getReminderTime() != null ? r.getReminderTime() : "Unscheduled",
+                            java.util.TreeMap::new,
+                            java.util.stream.Collectors.toList()
+                    ));
+
+            StringBuilder sb = new StringBuilder("⏰ *Your Medication Alarm Nodes & Schedule:*\n\n");
+            for (Map.Entry<String, List<com.med.assistant.model.MedicationReminder>> entry : nodes.entrySet()) {
+                String timeNode = entry.getKey();
+                List<com.med.assistant.model.MedicationReminder> meds = entry.getValue();
+
+                sb.append("🕒 *Time Node: ").append(timeNode).append(" IST* (")
+                  .append(meds.size()).append(meds.size() == 1 ? " medicine" : " medicines").append(")\n");
+
+                for (var r : meds) {
+                    String dosage = (r.getDosageInstruction() != null && !r.getDosageInstruction().isBlank())
+                            ? " — " + r.getDosageInstruction() : "";
+                    String status = r.getStatus() == com.med.assistant.model.MedicationReminder.AdherenceStatus.TAKEN ? "✅ Taken"
+                            : (r.getStatus() == com.med.assistant.model.MedicationReminder.AdherenceStatus.SNOOZED ? "⏰ Snoozed" : "⏳ Active");
+                    sb.append("  • 💊 *").append(r.getMedicineName()).append("*").append(dosage)
+                      .append(" [").append(status).append("]\n");
+                }
+                sb.append("\n");
+            }
+            sb.append("🔔 Interactive alarms trigger automatically with [Taken] and [Snooze] buttons!");
+            return ResponseEntity.ok(new SimulatorResponse(sb.toString(), "text", null, null, null, null));
+        }
+
+        if (lower.contains("remind") && (lower.contains(" at ") || lower.contains(" @ "))) {
+            String[] parts = query.split("(?i)\\s+(at|@)\\s+");
+            if (parts.length >= 2) {
+                String med = parts[0].replaceAll("(?i)(remind|me|to|take|set|reminder|for|please|a)", "").trim();
+                if (med.isBlank()) med = "Medication";
+                String timeStr = parts[1].trim();
+                com.med.assistant.model.MedicationReminder created = reminderService.createReminder(phone, med, "Daily Dose", timeStr);
+                return ResponseEntity.ok(new SimulatorResponse(
+                        "✅ *Medication Alarm Node Created!*\n\n💊 Medicine: " + med + "\n⏰ Time: " + timeStr + " (IST)\n\nYou will receive a notification alert with [Taken] and [Snooze 15m/30m] buttons at this time!",
+                        "text", null, null, null, null));
+            }
         }
 
         if (query.toLowerCase().contains("report") || query.toLowerCase().contains("wardrobe") || query.toLowerCase().contains("test")) {

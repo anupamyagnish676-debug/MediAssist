@@ -26,6 +26,8 @@ public class MedicationReminder {
     private boolean active = true;
     private LocalDateTime lastAlertSent;
     private LocalDateTime lastTakenAt;
+    private LocalDateTime snoozeUntil;
+    private int snoozeCount = 0;
 
     public enum AdherenceStatus {
         PENDING,
@@ -71,4 +73,10 @@ public class MedicationReminder {
 
     public LocalDateTime getLastTakenAt() { return lastTakenAt; }
     public void setLastTakenAt(LocalDateTime lastTakenAt) { this.lastTakenAt = lastTakenAt; }
+
+    public LocalDateTime getSnoozeUntil() { return snoozeUntil; }
+    public void setSnoozeUntil(LocalDateTime snoozeUntil) { this.snoozeUntil = snoozeUntil; }
+
+    public int getSnoozeCount() { return snoozeCount; }
+    public void setSnoozeCount(int snoozeCount) { this.snoozeCount = snoozeCount; }
 }
