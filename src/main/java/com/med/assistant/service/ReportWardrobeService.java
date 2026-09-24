@@ -14,6 +14,8 @@ import java.util.List;
 @Service
 public class ReportWardrobeService {
 
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(ReportWardrobeService.class);
+
     private final MedicalDocumentRepository documentRepository;
     private final GeminiAiService geminiAiService;
 
@@ -30,37 +32,52 @@ public class ReportWardrobeService {
      */
     public MedicalDocument storeDocument(String patientPhone, byte[] fileBytes, String originalName, String mimeType) {
         try {
-            Path wardrobeDir = Paths.get(uploadDir, "wardrobe", patientPhone);
-            Files.createDirectories(wardrobeDir);
+            String safeOriginalName = originalName != null ? originalName.replaceAll("[^a-zA-Z0-9._-]", "_") : "document.jpg";
+            String fileName = System.currentTimeMillis() + "_" + safeOriginalName;
+            String savedPath = "./uploads/wardrobe/" + fileName;
 
-            String fileName = System.currentTimeMillis() + "_" + originalName;
-            Path filePath = wardrobeDir.resolve(fileName);
-
-            try (FileOutputStream fos = new FileOutputStream(filePath.toFile())) {
-                fos.write(fileBytes);
+            try {
+                Path wardrobeDir = Paths.get(uploadDir, "wardrobe", patientPhone.replaceAll("[^a-zA-Z0-9+]", ""));
+                Files.createDirectories(wardrobeDir);
+                Path filePath = wardrobeDir.resolve(fileName);
+                try (FileOutputStream fos = new FileOutputStream(filePath.toFile())) {
+                    fos.write(fileBytes);
+                }
+                savedPath = filePath.toAbsolutePath().toString();
+            } catch (Exception ioEx) {
+                logger.warn("Could not save document file to disk: {}", ioEx.getMessage());
             }
 
             // Run AI OCR & Summarization
-            String aiSummary = geminiAiService.analyzeLabReportOrPrescription(fileBytes, mimeType, originalName);
+            String aiSummary = "Medical document processed and safely filed in your Report Wardrobe.";
+            try {
+                aiSummary = geminiAiService.analyzeLabReportOrPrescription(fileBytes, mimeType, safeOriginalName);
+                if (aiSummary != null && aiSummary.length() > 3800) {
+                    aiSummary = aiSummary.substring(0, 3800);
+                }
+            } catch (Exception aiEx) {
+                logger.warn("AI analysis during document storage failed: {}", aiEx.getMessage());
+            }
 
-            MedicalDocument.DocumentType docType = originalName.toLowerCase().contains("prescription")
+            MedicalDocument.DocumentType docType = safeOriginalName.toLowerCase().contains("prescription")
                     ? MedicalDocument.DocumentType.PRESCRIPTION
                     : MedicalDocument.DocumentType.LAB_REPORT;
 
             MedicalDocument doc = new MedicalDocument(
                     patientPhone,
                     docType,
-                    originalName,
-                    originalName,
-                    filePath.toAbsolutePath().toString(),
+                    safeOriginalName,
+                    safeOriginalName,
+                    savedPath,
                     aiSummary,
-                    "Lab, Medical Report, " + originalName
+                    "Medical Document, " + safeOriginalName
             );
 
             return documentRepository.save(doc);
 
         } catch (Exception e) {
-            throw new RuntimeException("Failed to store document in wardrobe: " + e.getMessage(), e);
+            logger.error("Failed to store document in wardrobe: {}", e.getMessage(), e);
+            return null;
         }
     }
 

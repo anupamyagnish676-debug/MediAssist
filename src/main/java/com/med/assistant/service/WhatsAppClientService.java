@@ -1,5 +1,7 @@
 package com.med.assistant.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -7,6 +9,10 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.util.*;
 
 @Service
@@ -107,6 +113,7 @@ public class WhatsAppClientService {
 
     /**
      * Downloads user-uploaded media (prescriptions, lab reports, photos) from Meta WhatsApp Cloud API.
+     * Manually handles 301/302 redirects to preserve the Bearer authorization header required by Meta CDN.
      */
     public byte[] downloadMedia(String mediaId) {
         String token = resolveAccessToken();
@@ -120,35 +127,70 @@ public class WhatsAppClientService {
             String metaMediaEndpoint = apiUrl + "/" + mediaId;
             logger.info("Fetching media metadata from: {}", metaMediaEndpoint);
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setBearerAuth(token);
-            headers.set("User-Agent", "curl/7.64.1");
-            HttpEntity<?> entity = new HttpEntity<>(headers);
+            HttpClient client = HttpClient.newBuilder()
+                    .followRedirects(HttpClient.Redirect.NEVER)
+                    .build();
 
-            ResponseEntity<Map> metaResponse = restTemplate.exchange(
-                    metaMediaEndpoint, HttpMethod.GET, entity, Map.class
-            );
+            HttpRequest infoReq = HttpRequest.newBuilder()
+                    .uri(URI.create(metaMediaEndpoint))
+                    .header("Authorization", "Bearer " + token)
+                    .header("User-Agent", "curl/7.64.1")
+                    .GET()
+                    .build();
 
-            Map<String, Object> body = metaResponse.getBody();
-            if (body == null || !body.containsKey("url")) {
-                logger.warn("Meta returned empty media info for media ID: {}", mediaId);
+            HttpResponse<String> infoResp = client.send(infoReq, HttpResponse.BodyHandlers.ofString());
+            if (infoResp.statusCode() >= 400) {
+                logger.error("Meta media info query failed (status {}): {}", infoResp.statusCode(), infoResp.body());
                 return null;
             }
 
-            String mediaDownloadUrl = (String) body.get("url");
-            logger.info("Downloading media content from CDN URL: {}", mediaDownloadUrl);
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode json = mapper.readTree(infoResp.body());
+            if (!json.has("url")) {
+                logger.warn("Meta returned no download URL for mediaId {}: {}", mediaId, infoResp.body());
+                return null;
+            }
 
-            // 2. Fetch the actual binary payload from Meta CDN URL using auth header
-            ResponseEntity<byte[]> downloadResponse = restTemplate.exchange(
-                    mediaDownloadUrl, HttpMethod.GET, entity, byte[].class
-            );
+            String downloadUrl = json.get("url").asText();
+            logger.info("Downloading media content from Meta CDN: {}", downloadUrl);
 
-            byte[] mediaBytes = downloadResponse.getBody();
-            logger.info("Successfully downloaded {} bytes for media ID: {}", mediaBytes != null ? mediaBytes.length : 0, mediaId);
-            return mediaBytes;
+            // 2. Fetch binary data. If redirected, re-send request with Bearer authorization!
+            HttpRequest downloadReq = HttpRequest.newBuilder()
+                    .uri(URI.create(downloadUrl))
+                    .header("Authorization", "Bearer " + token)
+                    .header("User-Agent", "curl/7.64.1")
+                    .header("Accept", "*/*")
+                    .GET()
+                    .build();
+
+            HttpResponse<byte[]> downloadResp = client.send(downloadReq, HttpResponse.BodyHandlers.ofByteArray());
+
+            if (downloadResp.statusCode() == 301 || downloadResp.statusCode() == 302 || downloadResp.statusCode() == 307) {
+                String redirectUrl = downloadResp.headers().firstValue("Location").orElse(null);
+                if (redirectUrl != null) {
+                    logger.info("Preserving Bearer auth and following redirect to: {}", redirectUrl);
+                    HttpRequest redirectReq = HttpRequest.newBuilder()
+                            .uri(URI.create(redirectUrl))
+                            .header("Authorization", "Bearer " + token)
+                            .header("User-Agent", "curl/7.64.1")
+                            .header("Accept", "*/*")
+                            .GET()
+                            .build();
+                    downloadResp = client.send(redirectReq, HttpResponse.BodyHandlers.ofByteArray());
+                }
+            }
+
+            if (downloadResp.statusCode() == 200) {
+                byte[] bytes = downloadResp.body();
+                logger.info("Successfully downloaded {} bytes for media ID: {}", bytes != null ? bytes.length : 0, mediaId);
+                return bytes;
+            } else {
+                logger.error("Failed to download media bytes. HTTP status {}: {}", downloadResp.statusCode(), new String(downloadResp.body()));
+                return null;
+            }
 
         } catch (Exception e) {
-            logger.error("Failed to download WhatsApp media (ID: {}): {}", mediaId, e.getMessage());
+            logger.error("Failed to download WhatsApp media (ID: {}): {}", mediaId, e.getMessage(), e);
             return null;
         }
     }

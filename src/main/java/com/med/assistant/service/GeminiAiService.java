@@ -287,7 +287,7 @@ public class GeminiAiService {
         return null;
     }
 
-    private PrescriptionAnalysisResult generateFallbackPrescriptionResult(String fileName) {
+    public PrescriptionAnalysisResult generateFallbackPrescriptionResult(String fileName) {
         List<PrescribedMedication> meds = List.of(
                 new PrescribedMedication("Paracetamol 650mg", "1 tablet after meals (Twice daily)", List.of("08:00", "20:00")),
                 new PrescribedMedication("Pantoprazole 40mg", "1 tablet on empty stomach (Before breakfast)", List.of("07:30")),
