@@ -88,6 +88,14 @@ public class WhatsAppWebhookController {
     }
 
     /**
+     * Test Gemini AI Connection and API Key validity.
+     */
+    @GetMapping("/test-gemini")
+    public ResponseEntity<Map<String, Object>> testGemini(@RequestParam(defaultValue = "drinking water") String q) {
+        return ResponseEntity.ok(geminiAiService.testGeminiConnection(q));
+    }
+
+    /**
      * Inbound WhatsApp Message Handler.
      */
     @PostMapping("/webhook")

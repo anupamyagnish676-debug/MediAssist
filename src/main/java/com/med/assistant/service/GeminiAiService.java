@@ -99,6 +99,46 @@ public class GeminiAiService {
         return generateMockTriageResponse(userQuery);
     }
 
+    public Map<String, Object> testGeminiConnection(String query) {
+        Map<String, Object> result = new HashMap<>();
+        boolean hasKey = geminiApiKey != null && !geminiApiKey.isBlank() && !geminiApiKey.contains("mock");
+        result.put("apiKeyConfigured", hasKey);
+        result.put("keyPrefix", hasKey ? geminiApiKey.substring(0, Math.min(6, geminiApiKey.length())) + "..." : "NONE");
+
+        if (!hasKey) {
+            result.put("status", "NO_API_KEY");
+            result.put("message", "GEMINI_API_KEY is not configured in Render Environment variables.");
+            return result;
+        }
+
+        String[] candidateModels = { "gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-pro" };
+        Map<String, Object> textPart = Map.of("text", "Give a 1-sentence health tip about: " + query);
+        Map<String, Object> content = Map.of("parts", List.of(textPart));
+        Map<String, Object> requestBody = Map.of("contents", List.of(content));
+
+        List<String> errors = new ArrayList<>();
+        for (String candidate : candidateModels) {
+            try {
+                String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" + candidate + ":generateContent?key=" + geminiApiKey.trim();
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+                ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+                String text = extractTextFromGeminiResponse(response.getBody());
+                result.put("status", "SUCCESS");
+                result.put("workingModel", candidate);
+                result.put("aiOutput", text);
+                return result;
+            } catch (Exception e) {
+                errors.add(candidate + ": " + e.getMessage());
+            }
+        }
+        result.put("status", "FAILED_CALLING_GOOGLE");
+        result.put("errors", errors);
+        return result;
+    }
+
     /**
      * Multimodal OCR & Analysis for Prescriptions and Lab Reports.
      */
