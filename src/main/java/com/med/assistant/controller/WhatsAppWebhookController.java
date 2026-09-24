@@ -243,13 +243,13 @@ public class WhatsAppWebhookController {
         Appointment appointment = new Appointment(hospital, doctor, fromPhone, "Patient",
                 LocalDate.now(), "11:00 AM", nextTokenNumber, qrToken);
 
-        appointmentRepository.save(appointment);
+        appointment = appointmentRepository.save(appointment);
 
         // Generate Branded PDF Slip with QR Code (in-memory)
         try {
             pdfService.generatePdfSlip(appointment);
         } catch (Exception e) {
-            // PDF generation is non-critical, log and continue
+            logger.error("Error generating PDF slip for appointment: {}", e.getMessage(), e);
         }
 
         String pdfUrl = "https://mediassist-1hdl.onrender.com/api/v1/appointments/" + appointment.getId() + "/pdf";
