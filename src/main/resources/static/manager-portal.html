@@ -6,6 +6,7 @@
     <title>Hospital Manager - MediAssist</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         body { margin: 0; font-family: 'Inter', sans-serif; display: flex; min-height: 100vh; background-color: #f3f4f6; }
         
@@ -72,6 +73,19 @@
         
         .toast { position: fixed; bottom: 20px; right: 20px; background-color: #10b981; color: white; padding: 1rem; border-radius: 0.375rem; opacity: 0; transition: opacity 0.3s; z-index: 100; pointer-events: none; }
         .toast.show { opacity: 1; }
+
+        /* Check-In Tab */
+        .checkin-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        #qr-reader { width: 100%; border-radius: 0.5rem; overflow: hidden; border: 2px dashed #d1d5db; background: #fff; min-height: 280px; }
+        .checkin-result { background: white; border-radius: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); padding: 2rem; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 280px; }
+        .manual-entry { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        .manual-entry input { flex: 1; padding: 0.625rem; border: 1px solid #d1d5db; border-radius: 0.375rem; font-size: 0.875rem; }
+        .checkin-success { text-align: center; }
+        .checkin-success .token-big { font-size: 3rem; font-weight: 900; color: #0066FF; margin: 0.75rem 0; }
+        .checkin-success .patient-name { font-size: 1.25rem; font-weight: 600; color: #111827; }
+        .checkin-success .detail-box { background: #f9fafb; padding: 1rem; border-radius: 0.5rem; border: 1px solid #e5e7eb; text-align: left; margin-top: 1rem; width: 100%; }
+        .checkin-success .detail-box p { margin: 0.25rem 0; font-size: 0.875rem; color: #374151; }
+        @media (max-width: 768px) { .checkin-layout { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -81,6 +95,7 @@
             <a class="nav-item active" data-target="dashboard">Dashboard</a>
             <a class="nav-item" data-target="doctors">Doctors</a>
             <a class="nav-item" data-target="appointments">Appointments</a>
+            <a class="nav-item" data-target="checkin">QR Check-In</a>
             <a class="nav-item" data-target="settings">Settings</a>
         </div>
         <div class="sidebar-footer">
@@ -199,6 +214,35 @@
                 </div>
             </div>
 
+            <!-- QR Check-In Tab -->
+            <div id="checkin" class="tab-pane">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Patient QR Check-In</h2>
+                    </div>
+                    <p style="color: #6b7280; margin-bottom: 1.5rem;">Scan the QR code on the patient's appointment slip or enter the token code manually.</p>
+                    <div class="checkin-layout">
+                        <!-- Left: Camera Scanner -->
+                        <div>
+                            <h3 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem;">📷 Live Camera Scanner</h3>
+                            <div id="qr-reader"></div>
+                            <div class="manual-entry">
+                                <input type="text" id="manual-token" placeholder="Enter QR token (e.g. A1B2C3D4)" />
+                                <button class="btn btn-blue" onclick="manualCheckIn()">Check-In</button>
+                            </div>
+                        </div>
+                        <!-- Right: Result Display -->
+                        <div class="checkin-result" id="checkin-result">
+                            <div style="text-align: center; color: #9ca3af;">
+                                <div style="font-size: 3rem; margin-bottom: 0.5rem;">📄</div>
+                                <h3 style="margin: 0.5rem 0;">Waiting for QR Scan</h3>
+                                <p style="font-size: 0.875rem;">Hold the patient's appointment slip up to the camera or type the token code.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Settings Tab -->
             <div id="settings" class="tab-pane">
                 <div class="card">
@@ -269,6 +313,7 @@
                 if (target === 'dashboard') loadDashboardData();
                 else if (target === 'doctors') loadDoctors();
                 else if (target === 'appointments') loadAppointments();
+                else if (target === 'checkin') initQrScanner();
                 else if (target === 'settings') fillSettings();
             });
         });
@@ -444,6 +489,88 @@
                 }
             } catch(e) {}
         });
+
+        // === QR Check-In Functions ===
+        let qrScanner = null;
+        let isCheckinProcessing = false;
+
+        function initQrScanner() {
+            // Clean up previous scanner if any
+            if (qrScanner) {
+                try { qrScanner.clear(); } catch(e) {}
+                qrScanner = null;
+            }
+            const readerEl = document.getElementById('qr-reader');
+            if (!readerEl) return;
+            readerEl.innerHTML = '';
+
+            qrScanner = new Html5QrcodeScanner("qr-reader", {
+                fps: 10,
+                qrbox: { width: 250, height: 250 },
+                rememberLastUsedCamera: true
+            });
+            qrScanner.render((decodedText) => {
+                processCheckIn(decodedText);
+            });
+        }
+
+        function manualCheckIn() {
+            const val = document.getElementById('manual-token').value.trim();
+            if (val) processCheckIn(val);
+        }
+
+        async function processCheckIn(tokenString) {
+            if (isCheckinProcessing) return;
+            isCheckinProcessing = true;
+
+            const resultDiv = document.getElementById('checkin-result');
+            resultDiv.innerHTML = '<div style="text-align:center;"><h3 style="color:#6b7280;">Checking in...</h3></div>';
+
+            // Clean token (QR encodes "APPT:XXXXXX")
+            const cleanToken = tokenString.replace('APPT:', '').trim();
+
+            try {
+                const res = await fetch('/api/v1/appointments/check-in?token=' + encodeURIComponent(cleanToken), {
+                    method: 'POST'
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    resultDiv.innerHTML = `
+                        <div class="checkin-success">
+                            <span class="badge badge-active" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">✅ Check-In Confirmed</span>
+                            <div class="token-big">#${String(data.serialNumber).padStart(2, '0')}</div>
+                            <div class="patient-name">${data.patientName || 'Patient'}</div>
+                            <p style="color: #6b7280; font-size: 0.875rem;">📱 ${data.patientPhone}</p>
+                            <div class="detail-box">
+                                <p><strong>Consulting Doctor:</strong> ${data.doctorName} (${data.department})</p>
+                                <p><strong>OPD Room:</strong> Room ${data.roomNumber}</p>
+                            </div>
+                            <p style="font-size: 0.8rem; color: #9ca3af; margin-top: 0.75rem;">Patient added to the waiting queue</p>
+                        </div>
+                    `;
+                    showToast('Patient checked in successfully!');
+                } else {
+                    resultDiv.innerHTML = `
+                        <div style="text-align: center; color: #ef4444;">
+                            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">❌</div>
+                            <h3>Check-In Failed</h3>
+                            <p style="font-size: 0.875rem;">${data.message || 'Invalid QR code or token.'}</p>
+                        </div>
+                    `;
+                }
+            } catch (err) {
+                resultDiv.innerHTML = `
+                    <div style="text-align: center; color: #ef4444;">
+                        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">❌</div>
+                        <h3>Connection Error</h3>
+                        <p style="font-size: 0.875rem;">Could not connect to the check-in server.</p>
+                    </div>
+                `;
+            } finally {
+                setTimeout(() => { isCheckinProcessing = false; }, 3000);
+            }
+        }
 
         checkAuth();
     </script>
