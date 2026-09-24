@@ -18,12 +18,7 @@ public class GeminiAiService {
     private static final Logger logger = LoggerFactory.getLogger(GeminiAiService.class);
 
     private static final String[] CANDIDATE_MODELS = {
-            "gemini-3.6-flash",
-            "gemini-2.5-flash",
-            "gemini-3.0-flash",
-            "gemini-1.5-flash",
-            "gemini-2.0-flash",
-            "gemini-pro"
+            "gemini-3.6-flash"
     };
 
     public record PrescribedMedication(String name, String dosage, List<String> reminderTimes) {}
@@ -266,17 +261,36 @@ public class GeminiAiService {
         try {
             // 1x1 transparent PNG Base64
             String tinyPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-            byte[] imageBytes = Base64.getDecoder().decode(tinyPng);
-            PrescriptionAnalysisResult res = analyzePrescriptionForReminders(imageBytes, "image/png", "test.png");
+            String prompt = "Describe this test image in one short sentence.";
+
+            Map<String, Object> inlineData = Map.of(
+                    "mimeType", "image/png",
+                    "data", tinyPng
+            );
+            Map<String, Object> imagePart = Map.of("inlineData", inlineData);
+            Map<String, Object> textPart = Map.of("text", prompt);
+            Map<String, Object> content = Map.of("parts", List.of(textPart, imagePart));
+            Map<String, Object> requestBody = Map.of("contents", List.of(content));
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+
+            String endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=" + geminiApiKey.trim();
+            ResponseEntity<Map> response = restTemplate.postForEntity(endpoint, entity, Map.class);
+            String rawText = extractTextFromGeminiResponse(response.getBody());
+
             result.put("status", "SUCCESS");
-            result.put("doctorNotes", res != null ? res.doctorNotes() : "null");
-            result.put("medicationsCount", res != null && res.medications() != null ? res.medications().size() : 0);
-            result.put("lastVlmError", lastVlmError);
+            result.put("vlmRawResponse", rawText);
+            return result;
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            result.put("status", "HTTP_ERROR");
+            result.put("httpStatus", e.getStatusCode().value());
+            result.put("errorBody", e.getResponseBodyAsString());
             return result;
         } catch (Exception e) {
-            result.put("status", "ERROR");
+            result.put("status", "EXCEPTION");
             result.put("error", e.getMessage());
-            result.put("lastVlmError", lastVlmError);
             return result;
         }
     }
