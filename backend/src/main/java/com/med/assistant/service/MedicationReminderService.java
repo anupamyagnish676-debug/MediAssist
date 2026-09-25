@@ -84,6 +84,16 @@ public class MedicationReminderService {
         return false;
     }
 
+    public int cancelAllReminders(String patientPhone) {
+        List<MedicationReminder> active = reminderRepository.findByPatientPhoneAndActiveTrue(patientPhone);
+        if (active.isEmpty()) return 0;
+        for (MedicationReminder r : active) {
+            r.setActive(false);
+        }
+        reminderRepository.saveAll(active);
+        return active.size();
+    }
+
     /**
      * Automated Background Dispatcher: Runs every minute to trigger WhatsApp alerts.
      * Groups multiple medications scheduled for the exact same time into a single unified alert!

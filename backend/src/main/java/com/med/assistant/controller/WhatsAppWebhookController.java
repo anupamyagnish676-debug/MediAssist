@@ -236,6 +236,18 @@ public class WhatsAppWebhookController {
 
         // 3. Medication Reminder Commands
         if (lower.contains("reminder") || lower.contains("dawa") || lower.contains("remind me") || lower.contains("alarm")) {
+            // Check for cancel / stop / delete commands first
+            if (lower.contains("cancel") || lower.contains("stop") || lower.contains("delete") || lower.contains("clear") || lower.contains("remove")) {
+                int cancelled = reminderService.cancelAllReminders(fromPhone);
+                if (cancelled > 0) {
+                    whatsAppClient.sendTextMessage(fromPhone, "🛑 *All Medication Alarms Cancelled!*\n\nSuccessfully turned off and cancelled " 
+                            + cancelled + " active medication alarm(s).\n\nYou will no longer receive alert notifications for these medicines.\n\nTo schedule a new alarm anytime, message:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
+                } else {
+                    whatsAppClient.sendTextMessage(fromPhone, "ℹ️ You don't have any active medication alarms scheduled.");
+                }
+                return;
+            }
+
             if (lower.contains("my reminder") || lower.contains("show reminder") || lower.contains("list reminder") 
                     || lower.contains("check reminder") || lower.contains("alarm") || lower.contains("my alarms") || lower.contains("schedule")) {
                 var reminders = reminderService.getActiveReminders(fromPhone);
@@ -269,7 +281,8 @@ public class WhatsAppWebhookController {
                         sb.append("\n");
                     }
                     sb.append("🔔 *How Alarms Work:*\n");
-                    sb.append("At each time node, you will receive an alert with *[✅ Taken]*, *[⏰ Snooze 15m]*, and *[⏰ Snooze 30m]* buttons!");
+                    sb.append("At each time node, you will receive an alert with *[✅ Taken]*, *[⏰ Snooze 15m]*, and *[⏰ Snooze 30m]* buttons!\n\n");
+                    sb.append("💡 *To cancel all alarms*, simply message: *\"Cancel all alarms\"* or *\"Stop alarms\"*");
                     whatsAppClient.sendTextMessage(fromPhone, sb.toString());
                 }
                 return;

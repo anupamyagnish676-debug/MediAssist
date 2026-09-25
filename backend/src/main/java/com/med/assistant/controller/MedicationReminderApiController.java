@@ -211,4 +211,23 @@ public class MedicationReminderApiController {
             return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage()));
         }
     }
+
+    /**
+     * Cancel all active alarms/reminders for a patient phone number.
+     */
+    @DeleteMapping("/all")
+    public ResponseEntity<Map<String, Object>> cancelAllReminders(
+            @RequestParam(name = "phone", defaultValue = "+919876543210") String phone) {
+        try {
+            int count = reminderService.cancelAllReminders(phone);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "cancelledCount", count,
+                    "message", "Successfully cancelled " + count + " medication alarm(s)."
+            ));
+        } catch (Exception e) {
+            logger.error("Error cancelling all reminders for {}: {}", phone, e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
 }
