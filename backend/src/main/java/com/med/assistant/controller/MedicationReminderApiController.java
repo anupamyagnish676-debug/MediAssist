@@ -201,7 +201,7 @@ public class MedicationReminderApiController {
     /**
      * Delete a reminder node.
      */
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id:\\d+}")
     public ResponseEntity<Map<String, Object>> deleteReminder(@PathVariable(name = "id") Long id) {
         try {
             boolean deleted = reminderService.deleteReminder(id);
@@ -215,7 +215,7 @@ public class MedicationReminderApiController {
     /**
      * Cancel all active alarms/reminders for a patient phone number.
      */
-    @DeleteMapping("/all")
+    @DeleteMapping({"", "/all"})
     public ResponseEntity<Map<String, Object>> cancelAllReminders(
             @RequestParam(name = "phone", defaultValue = "+919876543210") String phone) {
         try {

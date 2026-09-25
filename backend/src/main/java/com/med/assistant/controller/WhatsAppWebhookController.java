@@ -235,21 +235,26 @@ public class WhatsAppWebhookController {
         }
 
         // 3. Medication Reminder Commands
-        if (lower.contains("reminder") || lower.contains("dawa") || lower.contains("remind me") || lower.contains("alarm")) {
-            // Check for cancel / stop / delete commands first
-            if (lower.contains("cancel") || lower.contains("stop") || lower.contains("delete") || lower.contains("clear") || lower.contains("remove")) {
-                int cancelled = reminderService.cancelAllReminders(fromPhone);
-                if (cancelled > 0) {
-                    whatsAppClient.sendTextMessage(fromPhone, "🛑 *All Medication Alarms Cancelled!*\n\nSuccessfully turned off and cancelled " 
-                            + cancelled + " active medication alarm(s).\n\nYou will no longer receive alert notifications for these medicines.\n\nTo schedule a new alarm anytime, message:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
-                } else {
-                    whatsAppClient.sendTextMessage(fromPhone, "ℹ️ You don't have any active medication alarms scheduled.");
-                }
-                return;
+        // First check for cancel / stop / delete / clear alarms commands
+        if (lower.contains("cancel all") || lower.contains("cancel alarm") || lower.contains("cancel reminder")
+                || lower.contains("stop alarm") || lower.contains("stop reminder") || lower.contains("clear alarm")
+                || lower.contains("clear reminder") || lower.contains("delete alarm") || lower.contains("delete reminder")
+                || (lower.contains("alarm") && (lower.contains("cancel") || lower.contains("stop") || lower.contains("delete") || lower.contains("clear") || lower.contains("remove")))
+                || (lower.contains("reminder") && (lower.contains("cancel") || lower.contains("stop") || lower.contains("delete") || lower.contains("clear") || lower.contains("remove")))) {
+            int cancelled = reminderService.cancelAllReminders(fromPhone);
+            if (cancelled > 0) {
+                whatsAppClient.sendTextMessage(fromPhone, "🛑 *All Medication Alarms Cancelled!*\n\nSuccessfully turned off and cancelled " 
+                        + cancelled + " active medication alarm(s).\n\nYou will no longer receive alert notifications for these medicines.\n\nTo schedule a new alarm anytime, message:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
+            } else {
+                whatsAppClient.sendTextMessage(fromPhone, "ℹ️ You don't have any active medication alarms scheduled.");
             }
+            return;
+        }
 
+        if (lower.contains("reminder") || lower.contains("dawa") || lower.contains("remind me") || lower.contains("alarm")) {
             if (lower.contains("my reminder") || lower.contains("show reminder") || lower.contains("list reminder") 
-                    || lower.contains("check reminder") || lower.contains("alarm") || lower.contains("my alarms") || lower.contains("schedule")) {
+                    || lower.contains("check reminder") || lower.equals("alarm") || lower.equals("alarms") 
+                    || lower.contains("my alarms") || lower.contains("show alarm") || lower.contains("list alarm") || lower.contains("schedule")) {
                 var reminders = reminderService.getActiveReminders(fromPhone);
                 if (reminders.isEmpty()) {
                     whatsAppClient.sendTextMessage(fromPhone, "📋 You have no active medication alarms.\n\nTo schedule one, message me:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");

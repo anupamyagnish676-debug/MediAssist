@@ -73,7 +73,14 @@ public class MedicationReminderService {
     }
 
     public List<MedicationReminder> getActiveReminders(String patientPhone) {
-        return reminderRepository.findByPatientPhoneAndActiveTrue(patientPhone);
+        Set<String> variants = getPhoneVariants(patientPhone);
+        Map<Long, MedicationReminder> map = new LinkedHashMap<>();
+        for (String p : variants) {
+            for (MedicationReminder r : reminderRepository.findByPatientPhoneAndActiveTrue(p)) {
+                map.put(r.getId(), r);
+            }
+        }
+        return new ArrayList<>(map.values());
     }
 
     public boolean deleteReminder(Long id) {
@@ -85,13 +92,32 @@ public class MedicationReminderService {
     }
 
     public int cancelAllReminders(String patientPhone) {
-        List<MedicationReminder> active = reminderRepository.findByPatientPhoneAndActiveTrue(patientPhone);
+        List<MedicationReminder> active = getActiveReminders(patientPhone);
         if (active.isEmpty()) return 0;
         for (MedicationReminder r : active) {
             r.setActive(false);
         }
         reminderRepository.saveAll(active);
         return active.size();
+    }
+
+    private Set<String> getPhoneVariants(String phone) {
+        Set<String> variants = new LinkedHashSet<>();
+        if (phone == null || phone.isBlank()) return variants;
+        variants.add(phone.trim());
+        String digits = phone.replaceAll("[^0-9]", "");
+        if (!digits.isBlank()) {
+            variants.add(digits);
+            variants.add("+" + digits);
+            if (digits.length() == 10) {
+                variants.add("+91" + digits);
+                variants.add("91" + digits);
+            } else if (digits.length() == 12 && digits.startsWith("91")) {
+                variants.add(digits.substring(2));
+                variants.add("+" + digits.substring(2));
+            }
+        }
+        return variants;
     }
 
     /**
