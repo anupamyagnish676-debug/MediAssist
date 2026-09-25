@@ -20,6 +20,7 @@ public class Hospital {
     private double latitude;
     private double longitude;
     private String phone;
+    @Column(columnDefinition = "TEXT")
     private String logoUrl;
     private String brandColor = "#0284c7";
     private boolean active = true;

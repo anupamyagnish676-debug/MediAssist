@@ -264,6 +264,18 @@
                             <label>Brand Color (Hex)</label>
                             <input type="text" id="set-color" placeholder="#0066FF">
                         </div>
+                        <div class="form-group">
+                            <label>Hospital Medical Logo (Printed on Top-Right of OP Case Sheet)</label>
+                            <div style="display: flex; align-items: center; gap: 15px; margin-top: 8px;">
+                                <div id="logo-preview-box" style="width: 70px; height: 70px; border-radius: 8px; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f8fafc;">
+                                    <img id="set-logo-preview" src="/images/default_hospital_crest.png" alt="Hospital Logo" style="max-width: 100%; max-height: 100%; object-fit: contain;">
+                                </div>
+                                <div style="flex: 1;">
+                                    <input type="file" id="set-logo-file" accept="image/*" style="font-size: 0.9rem;">
+                                    <p style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">Upload hospital/medical crest (PNG or JPG). Appears on top-right of official OP Case Sheet.</p>
+                                </div>
+                            </div>
+                        </div>
                         <button type="submit" class="btn btn-blue">Save Changes</button>
                     </form>
                 </div>
@@ -460,14 +472,33 @@
             } catch(e) { console.error(e); }
         }
 
+        let uploadedLogoBase64 = null;
+
         function fillSettings() {
             if(myHospital) {
                 document.getElementById('set-name').value = myHospital.name || '';
                 document.getElementById('set-address').value = myHospital.address || '';
                 document.getElementById('set-phone').value = myHospital.phone || '';
                 document.getElementById('set-color').value = myHospital.brandColor || '';
+                if (myHospital.logoUrl) {
+                    document.getElementById('set-logo-preview').src = myHospital.logoUrl;
+                } else {
+                    document.getElementById('set-logo-preview').src = '/images/default_hospital_crest.png';
+                }
             }
         }
+
+        document.getElementById('set-logo-file').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    uploadedLogoBase64 = evt.target.result;
+                    document.getElementById('set-logo-preview').src = uploadedLogoBase64;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
 
         document.getElementById('settings-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -475,7 +506,8 @@
                 name: document.getElementById('set-name').value,
                 address: document.getElementById('set-address').value,
                 phone: document.getElementById('set-phone').value,
-                brandColor: document.getElementById('set-color').value
+                brandColor: document.getElementById('set-color').value,
+                logoUrl: uploadedLogoBase64 || (myHospital ? myHospital.logoUrl : null)
             };
             try {
                 const res = await fetch('/api/v1/hospital-manager/settings', {
@@ -484,7 +516,7 @@
                     body: JSON.stringify(payload)
                 });
                 if(res.ok) {
-                    showToast('Settings updated');
+                    showToast('Settings & Logo updated successfully!');
                     await loadMyHospital();
                 }
             } catch(e) {}

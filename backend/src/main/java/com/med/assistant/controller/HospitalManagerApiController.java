@@ -56,7 +56,7 @@ public class HospitalManagerApiController {
 
     public record AddDoctorRequest(String name, String department, String roomNumber, double consultationFee, int dailyTokenLimit, String availableTime) {}
     public record UpdateScheduleRequest(String roomNumber, double consultationFee, int dailyTokenLimit, String availableTime) {}
-    public record UpdateHospitalSettingsRequest(String name, String address, String phone, String brandColor) {}
+    public record UpdateHospitalSettingsRequest(String name, String address, String phone, String brandColor, String logoUrl) {}
 
     /**
      * Get details of the hospital assigned to this manager.
@@ -67,7 +67,7 @@ public class HospitalManagerApiController {
     }
 
     /**
-     * Update hospital settings (name, address, phone, brandColor).
+     * Update hospital settings (name, address, phone, brandColor, logoUrl).
      */
     @PutMapping("/settings")
     public ResponseEntity<?> updateSettings(@RequestBody UpdateHospitalSettingsRequest req) {
@@ -76,8 +76,31 @@ public class HospitalManagerApiController {
         if (req.address() != null) h.setAddress(req.address().trim());
         if (req.phone() != null) h.setPhone(req.phone().trim());
         if (req.brandColor() != null && !req.brandColor().isBlank()) h.setBrandColor(req.brandColor().trim());
+        if (req.logoUrl() != null) h.setLogoUrl(req.logoUrl().trim());
         hospitalRepository.save(h);
         return ResponseEntity.ok(Map.of("success", true, "hospital", h));
+    }
+
+    /**
+     * Upload medical hospital logo image file.
+     */
+    @PostMapping(value = "/settings/logo", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> uploadLogo(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Uploaded file is empty"));
+        }
+        try {
+            byte[] bytes = file.getBytes();
+            String contentType = file.getContentType() != null ? file.getContentType() : "image/png";
+            String base64 = "data:" + contentType + ";base64," + java.util.Base64.getEncoder().encodeToString(bytes);
+            Hospital h = getManagerHospital();
+            h.setLogoUrl(base64);
+            hospitalRepository.save(h);
+            return ResponseEntity.ok(Map.of("success", true, "logoUrl", base64));
+        } catch (Exception e) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Failed to upload logo: " + e.getMessage()));
+        }
     }
 
     /**

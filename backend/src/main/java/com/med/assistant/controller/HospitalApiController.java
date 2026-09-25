@@ -45,6 +45,7 @@ public class HospitalApiController {
                 map.put("longitude", h.getLongitude());
                 map.put("phone", h.getPhone());
                 map.put("brandColor", h.getBrandColor() != null ? h.getBrandColor() : "#0284c7");
+                map.put("logoUrl", h.getLogoUrl());
                 map.put("active", h.isActive());
                 map.put("status", h.getStatus() != null ? h.getStatus().name() : "ACTIVE");
 
