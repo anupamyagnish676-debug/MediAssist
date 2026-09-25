@@ -62,8 +62,6 @@ public class AppointmentSlipPdfService {
      * Generate PDF bytes for an appointment (on-demand, for the download endpoint).
      */
     public byte[] generateAndGetBytes(Appointment appointment) {
-        byte[] existing = pdfCache.get(appointment.getId());
-        if (existing != null) return existing;
         generatePdfSlip(appointment);
         return pdfCache.get(appointment.getId());
     }
@@ -288,7 +286,8 @@ public class AppointmentSlipPdfService {
                 // ============================================================
                 // 5. QR CODE SECTION
                 // ============================================================
-                BufferedImage qrImage = generateQrImage("APPT:" + qrToken, 200, 200);
+                String qrPayload = "APPT:" + qrToken;
+                BufferedImage qrImage = generateQrImage(qrPayload, 200, 200);
                 PDImageXObject pdImage = LosslessFactory.createFromImage(doc, qrImage);
 
                 float qrSize = 75;
@@ -297,11 +296,11 @@ public class AppointmentSlipPdfService {
 
                 y -= qrSize + 5;
 
-                // QR Code Token string (e.g. "Code: DEMO-QR-001" or "Code: AB12CD34")
+                // QR Code Value string explicitly rendered (e.g. "QR Value: APPT:DEMO-QR-001")
                 cs.setNonStrokingColor(darkText[0], darkText[1], darkText[2]);
                 cs.beginText();
                 cs.setFont(fontBold, 8);
-                String codeLine = "Code: " + qrToken;
+                String codeLine = "QR Value: " + qrPayload;
                 float codeLineWidth = fontBold.getStringWidth(codeLine) / 1000 * 8;
                 cs.newLineAtOffset((pageWidth - codeLineWidth) / 2, y);
                 cs.showText(codeLine);
