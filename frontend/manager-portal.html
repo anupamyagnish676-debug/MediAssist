@@ -499,8 +499,23 @@
             if (file) {
                 const reader = new FileReader();
                 reader.onload = function(evt) {
-                    uploadedLogoBase64 = evt.target.result;
-                    document.getElementById('set-logo-preview').src = uploadedLogoBase64;
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        const maxDim = 300;
+                        let w = img.width, h = img.height;
+                        if (w > maxDim || h > maxDim) {
+                            if (w > h) { h = Math.round(h * (maxDim / w)); w = maxDim; }
+                            else { w = Math.round(w * (maxDim / h)); h = maxDim; }
+                        }
+                        canvas.width = w;
+                        canvas.height = h;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, w, h);
+                        uploadedLogoBase64 = canvas.toDataURL('image/png');
+                        document.getElementById('set-logo-preview').src = uploadedLogoBase64;
+                    };
+                    img.src = evt.target.result;
                 };
                 reader.readAsDataURL(file);
             }
@@ -524,8 +539,13 @@
                 if(res.ok) {
                     showToast('Settings & Logo updated successfully!');
                     await loadMyHospital();
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showToast(err.message || 'Error updating settings');
                 }
-            } catch(e) {}
+            } catch(e) {
+                showToast('Failed to connect to server');
+            }
         });
 
         // === QR Check-In Functions ===

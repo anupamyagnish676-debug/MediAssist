@@ -18,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @RestController
@@ -55,6 +56,7 @@ public class WhatsAppWebhookController {
     private final OpdScheduleService opdScheduleService;
     private final Map<String, String> userTriageDept = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, double[]> userLocation = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, Long> userPendingDoctorBooking = new java.util.concurrent.ConcurrentHashMap<>();
 
     public WhatsAppWebhookController(WhatsAppClientService whatsAppClient,
                                      LocationService locationService,
@@ -275,6 +277,25 @@ public class WhatsAppWebhookController {
             }
         }
 
+        // 2a-2. Check if patient is responding with a preferred date for a pending doctor appointment
+        if (userPendingDoctorBooking.containsKey(fromPhone)) {
+            LocalDate targetDate = parseUserDateInput(lower);
+            if (targetDate != null) {
+                Long doctorId = userPendingDoctorBooking.get(fromPhone);
+                Doctor doc = doctorRepository.findById(doctorId).orElse(null);
+                if (doc != null) {
+                    int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, targetDate);
+                    int limit = doc.getDailyTokenLimit();
+                    if (booked >= limit) {
+                        promptSlotsFullAndShowAlternatives(fromPhone, doc, targetDate);
+                    } else {
+                        bookAppointmentForDoctorAndDate(fromPhone, doctorId, targetDate);
+                    }
+                    return;
+                }
+            }
+        }
+
         // 2b. Direct Hospital Discovery & Maps requests from text
         if (lower.contains("nearby hospital") || lower.contains("nearby hospitals") || lower.contains("google map") 
                 || lower.contains("google maps") || lower.contains("find hospital") || lower.contains("hospitals near")
@@ -455,9 +476,11 @@ public class WhatsAppWebhookController {
                 }
             } else if (selectedId != null && selectedId.startsWith("DOC_RATE_")) {
                 handleDoctorRatingSubmission(fromPhone, selectedId);
+            } else if (selectedId != null && selectedId.startsWith("APPTDATE_")) {
+                handleAppointmentDateSelection(fromPhone, selectedId);
             } else if (selectedId != null && selectedId.startsWith("DOC_")) {
                 Long doctorId = Long.parseLong(selectedId.replace("DOC_", ""));
-                bookAppointmentForDoctor(fromPhone, doctorId);
+                promptAppointmentDateSelection(fromPhone, doctorId);
             }
         } else if ("button_reply".equals(type)) {
             Map<String, Object> reply = (Map<String, Object>) interactive.get("button_reply");
@@ -479,9 +502,11 @@ public class WhatsAppWebhookController {
 
             if (buttonId.startsWith("DOC_RATE_")) {
                 handleDoctorRatingSubmission(fromPhone, buttonId);
+            } else if (buttonId.startsWith("APPTDATE_")) {
+                handleAppointmentDateSelection(fromPhone, buttonId);
             } else if (buttonId.startsWith("DOC_")) {
                 Long doctorId = Long.parseLong(buttonId.replace("DOC_", ""));
-                bookAppointmentForDoctor(fromPhone, doctorId);
+                promptAppointmentDateSelection(fromPhone, doctorId);
             } else if (buttonId.startsWith("MED_TAKEN_")) {
                 String idPayload = buttonId.replace("MED_TAKEN_", "");
                 List<Long> ids = Arrays.stream(idPayload.split("_"))
@@ -619,11 +644,175 @@ public class WhatsAppWebhookController {
         );
     }
 
+    private void promptAppointmentDateSelection(String fromPhone, Long doctorId) {
+        Doctor doc = doctorRepository.findById(doctorId).orElse(null);
+        if (doc == null) {
+            whatsAppClient.sendTextMessage(fromPhone, "Selected doctor was not found. Please try booking again.");
+            return;
+        }
+
+        userPendingDoctorBooking.put(fromPhone, doctorId);
+
+        List<Map<String, String>> dateRows = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+
+        // Offer next 6 days with live slot availability count
+        for (int i = 0; i < 6; i++) {
+            LocalDate d = today.plusDays(i);
+            int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, d);
+            int limit = doc.getDailyTokenLimit();
+            int remaining = Math.max(0, limit - booked);
+
+            String title;
+            if (i == 0) {
+                title = "Today (" + d.format(DateTimeFormatter.ofPattern("EEE, d MMM")) + ")";
+            } else if (i == 1) {
+                title = "Tomorrow (" + d.format(DateTimeFormatter.ofPattern("EEE, d MMM")) + ")";
+            } else {
+                title = d.format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy"));
+            }
+            if (title.length() > 24) title = title.substring(0, 24);
+
+            String desc;
+            if (remaining > 0) {
+                desc = "🟢 " + remaining + " tokens left (Next: #" + String.format("%02d", booked + 1) + ")";
+            } else {
+                desc = "🔴 FULL (0 tokens available)";
+            }
+            if (desc.length() > 72) desc = desc.substring(0, 72);
+
+            dateRows.add(Map.of(
+                    "id", "APPTDATE_" + doctorId + "_" + d.toString(),
+                    "title", title,
+                    "description", desc
+            ));
+        }
+
+        String bodyText = String.format(
+                "📅 *Select Preferred Consultation Date*\n\n" +
+                "👨‍⚕️ *Doctor:* %s (%s)\n" +
+                "⭐ *Doctor Rating:* ⭐ %.1f/5.0 (%d reviews)\n" +
+                "🚪 *Room:* %s | 💵 *Fee:* ₹%d\n" +
+                "⏰ *Hours:* %s\n\n" +
+                "Please choose your preferred date below:",
+                doc.getName(),
+                doc.getDepartment(),
+                doc.getRating(),
+                doc.getTotalReviews(),
+                doc.getRoomNumber() != null ? doc.getRoomNumber() : "-",
+                (int) doc.getConsultationFee(),
+                doc.getAvailableTime() != null ? doc.getAvailableTime() : "Regular OPD Hours"
+        );
+
+        whatsAppClient.sendInteractiveList(
+                fromPhone,
+                "Available Dates",
+                bodyText,
+                "Choose Date 📅",
+                dateRows
+        );
+    }
+
+    private void handleAppointmentDateSelection(String fromPhone, String payload) {
+        try {
+            String data = payload.replace("APPTDATE_", "");
+            int splitIdx = data.indexOf("_");
+            if (splitIdx < 0) return;
+
+            Long doctorId = Long.parseLong(data.substring(0, splitIdx));
+            String dateStr = data.substring(splitIdx + 1);
+            LocalDate chosenDate = LocalDate.parse(dateStr);
+
+            Doctor doctor = doctorRepository.findById(doctorId).orElse(null);
+            if (doctor == null) {
+                whatsAppClient.sendTextMessage(fromPhone, "Doctor record not found. Please try booking again.");
+                return;
+            }
+
+            int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, chosenDate);
+            int limit = doctor.getDailyTokenLimit();
+
+            if (booked >= limit) {
+                // Slots are full! Inform user and prompt alternate dates
+                promptSlotsFullAndShowAlternatives(fromPhone, doctor, chosenDate);
+                return;
+            }
+
+            // Slots are available! Book for chosen date
+            bookAppointmentForDoctorAndDate(fromPhone, doctorId, chosenDate);
+        } catch (Exception e) {
+            logger.error("Error handling appointment date selection: {}", e.getMessage(), e);
+            whatsAppClient.sendTextMessage(fromPhone, "Sorry, there was an issue processing your appointment date. Please try again.");
+        }
+    }
+
+    private void promptSlotsFullAndShowAlternatives(String fromPhone, Doctor doc, LocalDate fullDate) {
+        LocalDate today = LocalDate.now();
+        List<Map<String, String>> altRows = new ArrayList<>();
+
+        for (int i = 0; i < 7; i++) {
+            LocalDate d = today.plusDays(i);
+            if (d.equals(fullDate)) continue; // skip the full date
+
+            int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doc.getId(), d);
+            int remaining = Math.max(0, doc.getDailyTokenLimit() - booked);
+
+            if (remaining > 0) {
+                String title;
+                if (d.equals(today)) title = "Today (" + d.format(DateTimeFormatter.ofPattern("EEE, d MMM")) + ")";
+                else if (d.equals(today.plusDays(1))) title = "Tomorrow (" + d.format(DateTimeFormatter.ofPattern("EEE, d MMM")) + ")";
+                else title = d.format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy"));
+                if (title.length() > 24) title = title.substring(0, 24);
+
+                String desc = "🟢 " + remaining + " tokens available (Next: #" + String.format("%02d", booked + 1) + ")";
+                if (desc.length() > 72) desc = desc.substring(0, 72);
+
+                altRows.add(Map.of(
+                        "id", "APPTDATE_" + doc.getId() + "_" + d.toString(),
+                        "title", title,
+                        "description", desc
+                ));
+            }
+        }
+
+        String fullDateName = fullDate.format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy"));
+
+        if (altRows.isEmpty()) {
+            whatsAppClient.sendTextMessage(
+                    fromPhone,
+                    "⚠️ *All consultation slots for " + doc.getName() + " on " + fullDateName + " are fully booked!*\n\n" +
+                    "There are no immediate open slots over the next week. Please check back tomorrow or choose another specialist at the hospital."
+            );
+            return;
+        }
+
+        String alertText = String.format(
+                "⚠️ *No Slots Available on %s!*\n\n" +
+                "All %d daily tokens for *%s* on this date are fully booked.\n\n" +
+                "👉 *Please select another date with available slots below:*",
+                fullDateName,
+                doc.getDailyTokenLimit(),
+                doc.getName()
+        );
+
+        whatsAppClient.sendInteractiveList(
+                fromPhone,
+                "Other Open Dates",
+                alertText,
+                "Select Other Date 📅",
+                altRows
+        );
+    }
+
     private void bookAppointmentForDoctor(String fromPhone, Long doctorId) {
+        bookAppointmentForDoctorAndDate(fromPhone, doctorId, LocalDate.now());
+    }
+
+    private void bookAppointmentForDoctorAndDate(String fromPhone, Long doctorId, LocalDate appointmentDate) {
         Doctor doctor = doctorRepository.findById(doctorId).orElseThrow();
         Hospital hospital = doctor.getHospital();
 
-        int todayBookings = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, LocalDate.now());
+        int todayBookings = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, appointmentDate);
         int nextTokenNumber = todayBookings + 1;
 
         OpdScheduleService.TentativeSlot slot = opdScheduleService.calculateTentativeWindow(doctor, nextTokenNumber);
@@ -636,9 +825,12 @@ public class WhatsAppWebhookController {
         } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
 
         Appointment appointment = new Appointment(hospital, doctor, fromPhone, "Patient",
-                LocalDate.now(), timeSlotDescription, nextTokenNumber, qrToken);
+                appointmentDate, timeSlotDescription, nextTokenNumber, qrToken);
 
         appointment = appointmentRepository.save(appointment);
+
+        // Clear any pending date booking state for this user
+        userPendingDoctorBooking.remove(fromPhone);
 
         // Generate Branded PDF Slip with Dual QR Codes (in-memory)
         try {
@@ -648,16 +840,18 @@ public class WhatsAppWebhookController {
         }
 
         String pdfUrl = "https://mediassist-1hdl.onrender.com/api/v1/appointments/" + appointment.getId() + "/pdf";
+        String dateFormatted = appointmentDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"));
+        boolean isToday = appointmentDate.equals(LocalDate.now());
 
-        // Send Confirmation Text with Staggered Arrival Guidance & Session PIN
+        // Send Confirmation Text with Session PIN & Chosen Appointment Date
         String confirmation = """
-            🎉 *OPD Queue Token Confirmed!*
+            🎉 *OPD Consultation Confirmed!*
             
             🏥 *Hospital:* %s
             👨‍⚕️ *Doctor:* %s (%s)
             ⭐ *Doctor Rating:* ⭐ %.1f/5.0 (%d reviews)
             🚪 *Room:* %s
-            📅 *Date:* Today, %s
+            📅 *Appointment Date:* %s%s
             
             👉 *YOUR QUEUE TOKEN: #%02d*
             ⏰ *Tentative Window:* %s
@@ -667,7 +861,7 @@ public class WhatsAppWebhookController {
             📥 *Download OP Case Sheet Slip (PDF):*
             %s
             
-            💡 *Doctor Consultation Controls:*
+            💡 *Doctor Consultation Session:*
             Your A4 OP slip contains two QR codes:
             • 🟢 *START QR* (scanned upon entering doctor chamber)
             • 🔴 *END QR* (scanned upon finishing consultation)
@@ -681,7 +875,8 @@ public class WhatsAppWebhookController {
                 doctor.getRating(),
                 doctor.getTotalReviews(),
                 doctor.getRoomNumber() != null ? doctor.getRoomNumber() : "OPD Desk",
-                LocalDate.now(),
+                dateFormatted,
+                isToday ? " (Today)" : "",
                 nextTokenNumber,
                 slot.timeWindow(),
                 slot.reportingTime(),
@@ -697,12 +892,37 @@ public class WhatsAppWebhookController {
             whatsAppClient.sendDocumentMessage(
                     fromPhone,
                     pdfUrl,
-                    "📄 Official OP Case Sheet (Token #" + String.format("%02d", nextTokenNumber) + ")",
+                    "📄 Official OP Case Sheet (Token #" + String.format("%02d", nextTokenNumber) + " - " + appointmentDate.format(DateTimeFormatter.ofPattern("d MMM")) + ")",
                     "Appointment_Slip_Token_" + nextTokenNumber + ".pdf"
             );
         } catch (Exception e) {
             logger.warn("Failed to dispatch PDF document attachment: {}", e.getMessage());
         }
+    }
+
+    private LocalDate parseUserDateInput(String lower) {
+        LocalDate today = LocalDate.now();
+        String trimmed = lower.trim().toLowerCase();
+        if (trimmed.equals("today") || trimmed.contains("today") || trimmed.contains("aaj")) return today;
+        if (trimmed.equals("tomorrow") || trimmed.contains("tomorrow") || trimmed.contains("kal")) return today.plusDays(1);
+        if (trimmed.contains("day after") || trimmed.contains("parson")) return today.plusDays(2);
+
+        try {
+            return LocalDate.parse(trimmed);
+        } catch (Exception ignored) {}
+
+        try {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\b(\\d{1,2})(?:st|nd|rd|th)?\\b").matcher(trimmed);
+            if (m.find()) {
+                int day = Integer.parseInt(m.group(1));
+                if (day >= 1 && day <= 31) {
+                    LocalDate candidate = today.withDayOfMonth(day);
+                    if (candidate.isBefore(today)) candidate = candidate.plusMonths(1);
+                    return candidate;
+                }
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private void handleDoctorRatingSubmission(String fromPhone, String rateId) {

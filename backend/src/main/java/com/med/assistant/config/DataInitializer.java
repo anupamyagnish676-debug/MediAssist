@@ -298,7 +298,26 @@ public class DataInitializer {
                     userRepo.save(manager2);
                 }
 
-                logger.info("Demo database & accounts seeded successfully! Admin: admin@mediassist.com / Admin@123");
+                if (userRepo.findByEmailIgnoreCase("manager@kims.com").isEmpty()) {
+                    com.med.assistant.model.User managerKims = new com.med.assistant.model.User(
+                            "manager@kims.com",
+                            passwordEncoder.encode("Manager@123"),
+                            "KIMS Medical Superintendent & OPD Desk",
+                            com.med.assistant.model.User.Role.HOSPITAL_MANAGER,
+                            h6
+                    );
+                    userRepo.save(managerKims);
+                }
+
+                // Ensure all hospitals have a valid medical logo in database
+                for (Hospital hosp : hospitalRepo.findAll()) {
+                    if (hosp.getLogoUrl() == null || hosp.getLogoUrl().isBlank()) {
+                        hosp.setLogoUrl("/images/default_hospital_crest.png");
+                        hospitalRepo.save(hosp);
+                    }
+                }
+
+                logger.info("Demo database & accounts seeded successfully! Admin: admin@mediassist.com / Admin@123, KIMS: manager@kims.com / Manager@123");
             } catch (Exception ex) {
                 logger.warn("DataInitializer note: Database initialization or check skipped: {}", ex.getMessage());
             }

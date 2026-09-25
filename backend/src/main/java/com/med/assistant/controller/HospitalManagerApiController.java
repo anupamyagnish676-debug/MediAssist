@@ -51,7 +51,8 @@ public class HospitalManagerApiController {
         if (manager.getHospital() == null) {
             throw new IllegalStateException("Manager is not assigned to any hospital");
         }
-        return manager.getHospital();
+        return hospitalRepository.findById(manager.getHospital().getId())
+                .orElseThrow(() -> new IllegalStateException("Hospital not found"));
     }
 
     public record AddDoctorRequest(String name, String department, String roomNumber, double consultationFee, int dailyTokenLimit, String availableTime) {}
@@ -76,8 +77,10 @@ public class HospitalManagerApiController {
         if (req.address() != null) h.setAddress(req.address().trim());
         if (req.phone() != null) h.setPhone(req.phone().trim());
         if (req.brandColor() != null && !req.brandColor().isBlank()) h.setBrandColor(req.brandColor().trim());
-        if (req.logoUrl() != null) h.setLogoUrl(req.logoUrl().trim());
-        hospitalRepository.save(h);
+        if (req.logoUrl() != null && !req.logoUrl().isBlank()) {
+            h.setLogoUrl(compressLogoIfBase64(req.logoUrl().trim()));
+        }
+        h = hospitalRepository.saveAndFlush(h);
         return ResponseEntity.ok(Map.of("success", true, "hospital", h));
     }
 
@@ -93,13 +96,48 @@ public class HospitalManagerApiController {
             byte[] bytes = file.getBytes();
             String contentType = file.getContentType() != null ? file.getContentType() : "image/png";
             String base64 = "data:" + contentType + ";base64," + java.util.Base64.getEncoder().encodeToString(bytes);
+            String compressed = compressLogoIfBase64(base64);
+
             Hospital h = getManagerHospital();
-            h.setLogoUrl(base64);
-            hospitalRepository.save(h);
-            return ResponseEntity.ok(Map.of("success", true, "logoUrl", base64));
+            h.setLogoUrl(compressed);
+            h = hospitalRepository.saveAndFlush(h);
+            return ResponseEntity.ok(Map.of("success", true, "logoUrl", compressed));
         } catch (Exception e) {
             return ResponseEntity.status(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Failed to upload logo: " + e.getMessage()));
+        }
+    }
+
+    private String compressLogoIfBase64(String logoUrl) {
+        if (logoUrl == null || !logoUrl.startsWith("data:image")) return logoUrl;
+        try {
+            int commaIdx = logoUrl.indexOf(",");
+            if (commaIdx < 0) return logoUrl;
+            String base64Data = logoUrl.substring(commaIdx + 1);
+            byte[] bytes = java.util.Base64.getDecoder().decode(base64Data);
+            java.awt.image.BufferedImage img = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+            if (img == null) return logoUrl;
+
+            int maxDim = 300;
+            int w = img.getWidth();
+            int h = img.getHeight();
+            if (w > maxDim || h > maxDim) {
+                double scale = Math.min((double) maxDim / w, (double) maxDim / h);
+                int targetW = Math.max(1, (int) (w * scale));
+                int targetH = Math.max(1, (int) (h * scale));
+                java.awt.image.BufferedImage scaled = new java.awt.image.BufferedImage(targetW, targetH, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                java.awt.Graphics2D g2 = scaled.createGraphics();
+                g2.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g2.drawImage(img, 0, 0, targetW, targetH, null);
+                g2.dispose();
+                img = scaled;
+            }
+
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(img, "png", baos);
+            return "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(baos.toByteArray());
+        } catch (Exception e) {
+            return logoUrl;
         }
     }
 
