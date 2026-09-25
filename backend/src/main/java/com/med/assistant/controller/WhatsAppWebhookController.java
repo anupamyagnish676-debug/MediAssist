@@ -1091,7 +1091,12 @@ public class WhatsAppWebhookController {
             String thankYouMsg = String.format(
                     "🙏 *Thank You for Rating!*\n\n" +
                     "You rated your consultation: %s (*%d / 5 Stars*).\n\n" +
-                    "Your feedback helps future patients choose the best care and helps our hospital continuously improve. Wishing you good health and a speedy recovery! 🌿",
+                    "Your feedback helps future patients choose the best care and helps our hospital continuously improve. Wishing you good health and a speedy recovery! 🌿\n\n" +
+                    "📸 *Need assistance with your prescription?*\n" +
+                    "Please take a photo or send a PDF of your doctor's prescription right here in this chat! MediAssist will:\n" +
+                    "• Explain your medicines & dosages in simple words\n" +
+                    "• Schedule daily dose reminder alarms on WhatsApp\n" +
+                    "• Safely archive it in your digital medical wardrobe",
                     starsVisual, stars
             );
 
