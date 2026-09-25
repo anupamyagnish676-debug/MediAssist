@@ -28,6 +28,16 @@ public class WhatsAppWebhookController {
 
     public static final Map<String, Object> LAST_DEBUG = new java.util.concurrent.ConcurrentHashMap<>();
 
+    // Keep recently processed WhatsApp message IDs to prevent Meta webhook retries from duplicate processing
+    private static final Set<String> PROCESSED_MESSAGE_IDS = Collections.synchronizedSet(
+            Collections.newSetFromMap(new java.util.LinkedHashMap<String, Boolean>() {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Boolean> eldest) {
+                    return size() > 2000;
+                }
+            })
+    );
+
     @Value("${app.whatsapp.verify-token}")
     private String verifyToken;
 
@@ -91,6 +101,20 @@ public class WhatsAppWebhookController {
     }
 
     /**
+     * Diagnostic endpoint to inspect latest webhook processing status and Gemini VLM status.
+     */
+    @GetMapping("/debug")
+    public ResponseEntity<Map<String, Object>> getDebugInfo() {
+        Map<String, Object> debug = new HashMap<>(LAST_DEBUG);
+        try {
+            debug.put("vlmTest", geminiAiService.testVlmConnection());
+        } catch (Exception e) {
+            debug.put("vlmTestError", e.getMessage());
+        }
+        return ResponseEntity.ok(debug);
+    }
+
+    /**
      * Inbound WhatsApp Message Handler.
      */
     @PostMapping("/webhook")
@@ -112,8 +136,17 @@ public class WhatsAppWebhookController {
             if (messages == null || messages.isEmpty()) return ResponseEntity.ok("EVENT_RECEIVED");
 
             Map<String, Object> message = messages.get(0);
+            String messageId = (String) message.get("id");
             String fromPhone = (String) message.get("from");
             String messageType = (String) message.get("type");
+
+            // Meta Webhook Deduplication: Drop duplicate webhook deliveries triggered by network retries
+            if (messageId != null && !messageId.isBlank()) {
+                if (!PROCESSED_MESSAGE_IDS.add(messageId)) {
+                    logger.info("Dropping duplicate webhook delivery from Meta for messageId={}", messageId);
+                    return ResponseEntity.ok("EVENT_RECEIVED");
+                }
+            }
 
             dispatchMessage(fromPhone, messageType, message);
 
@@ -129,8 +162,20 @@ public class WhatsAppWebhookController {
             case "location" -> handleLocationMessage(fromPhone, (Map<String, Object>) message.get("location"));
             case "text" -> handleTextMessage(fromPhone, (Map<String, Object>) message.get("text"));
             case "interactive" -> handleInteractiveMessage(fromPhone, (Map<String, Object>) message.get("interactive"));
-            case "image", "document" -> handleDocumentMessage(fromPhone, type, message);
-            case "audio" -> handleAudioVoiceNote(fromPhone, (Map<String, Object>) message.get("audio"));
+            case "image", "document" -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    handleDocumentMessage(fromPhone, type, message);
+                } catch (Exception e) {
+                    logger.error("Error in async document/image processing: {}", e.getMessage(), e);
+                }
+            });
+            case "audio" -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    handleAudioVoiceNote(fromPhone, (Map<String, Object>) message.get("audio"));
+                } catch (Exception e) {
+                    logger.error("Error in async audio note processing: {}", e.getMessage(), e);
+                }
+            });
             default -> whatsAppClient.sendTextMessage(fromPhone, "Hello! Welcome to the Clinical Health Desk. Send your symptoms, share your location to book an OPD token with an available doctor, or upload prescriptions and lab reports.");
         }
     }
