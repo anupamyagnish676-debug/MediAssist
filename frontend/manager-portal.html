@@ -206,7 +206,8 @@
                                 <th>Department</th>
                                 <th>Time</th>
                                 <th>Status</th>
-                                <th>QR Token</th>
+                                <th>PIN / Code</th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -400,13 +401,18 @@
                     const tbody = document.querySelector('#appointments-table tbody');
                     tbody.innerHTML = appts.map(a => `
                         <tr>
-                            <td>${a.tokenNumber}</td>
+                            <td><strong>#${String(a.tokenNumber).padStart(2, '0')}</strong></td>
                             <td>${a.patientPhone}</td>
                             <td>${a.doctorName}</td>
                             <td>${a.department}</td>
                             <td>${a.timeSlot || a.appointmentTime || '-'}</td>
-                            <td>${a.status}</td>
-                            <td>${a.qrToken || '-'}</td>
+                            <td><span class="badge ${a.status === 'IN_CONSULTATION' ? 'badge-active' : a.status === 'COMPLETED' ? 'badge-inactive' : 'badge-active'}" style="${a.status === 'IN_CONSULTATION' ? 'background:#16a34a;' : ''}">${a.status}</span></td>
+                            <td><code style="background:#f3f4f6; padding: 2px 6px; border-radius: 4px; font-weight: 600;">${a.qrToken || a.qrCodeToken || '-'}</code></td>
+                            <td>
+                                <button class="btn btn-blue" onclick="window.open('/api/v1/appointments/${a.id}/pdf', '_blank')" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;">
+                                    🖨️ Print Slip
+                                </button>
+                            </td>
                         </tr>
                     `).join('');
                 }
@@ -568,17 +574,35 @@
                 const data = await res.json();
 
                 if (data.success) {
+                    const tokenForSession = data.qrCodeToken || cleanToken;
                     resultDiv.innerHTML = `
                         <div class="checkin-success">
-                            <span class="badge badge-active" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">✅ Check-In Confirmed</span>
+                            <span id="session-status-badge" class="badge badge-active" style="font-size: 0.875rem; padding: 0.375rem 0.75rem;">✅ Check-In Confirmed</span>
                             <div class="token-big">#${String(data.serialNumber).padStart(2, '0')}</div>
                             <div class="patient-name">${data.patientName || 'Patient'}</div>
                             <p style="color: #6b7280; font-size: 0.875rem;">📱 ${data.patientPhone}</p>
                             <div class="detail-box">
                                 <p><strong>Consulting Doctor:</strong> ${data.doctorName} (${data.department})</p>
                                 <p><strong>OPD Room:</strong> Room ${data.roomNumber}</p>
+                                <p><strong>Session PIN:</strong> <code>${tokenForSession}</code></p>
                             </div>
-                            <p style="font-size: 0.8rem; color: #9ca3af; margin-top: 0.75rem;">Patient added to the waiting queue</p>
+
+                            <!-- Print Slip & Session Controls -->
+                            <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                                <button class="btn btn-blue" onclick="window.open('/api/v1/appointments/${data.appointmentId}/pdf', '_blank')" style="font-size: 1rem; padding: 0.6rem 1rem; width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                                    🖨️ <strong>Print OP Case Sheet Slip</strong>
+                                </button>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn" onclick="startConsultation('${tokenForSession}')" style="flex: 1; background: #16a34a; color: white; padding: 0.5rem;">
+                                        🟢 Start Consultation
+                                    </button>
+                                    <button class="btn" onclick="endConsultation('${tokenForSession}')" style="flex: 1; background: #dc2626; color: white; padding: 0.5rem;">
+                                        🔴 End Consultation
+                                    </button>
+                                </div>
+                            </div>
+
+                            <p style="font-size: 0.8rem; color: #9ca3af; margin-top: 0.75rem;">Live queue and patient WhatsApp will automatically update</p>
                         </div>
                     `;
                     showToast('Patient checked in successfully!');
@@ -601,6 +625,46 @@
                 `;
             } finally {
                 setTimeout(() => { isCheckinProcessing = false; }, 3000);
+            }
+        }
+
+        async function startConsultation(token) {
+            try {
+                const res = await fetch('/api/v1/appointments/start-consultation?token=' + encodeURIComponent(token), { method: 'POST' });
+                const d = await res.json();
+                if (d.success) {
+                    showToast('🟢 Consultation Started! Waiting patient notified on WhatsApp.');
+                    const st = document.getElementById('session-status-badge');
+                    if (st) {
+                        st.textContent = '🟢 In Consultation';
+                        st.style.background = '#16a34a';
+                    }
+                    loadAppointments();
+                } else {
+                    showToast(d.message || 'Error starting consultation');
+                }
+            } catch(e) {
+                showToast('Failed to connect to server');
+            }
+        }
+
+        async function endConsultation(token) {
+            try {
+                const res = await fetch('/api/v1/appointments/end-consultation?token=' + encodeURIComponent(token), { method: 'POST' });
+                const d = await res.json();
+                if (d.success) {
+                    showToast('🔴 Consultation Completed! Next patient called and rating request sent.');
+                    const st = document.getElementById('session-status-badge');
+                    if (st) {
+                        st.textContent = '✅ Consultation Completed';
+                        st.style.background = '#6b7280';
+                    }
+                    loadAppointments();
+                } else {
+                    showToast(d.message || 'Error completing consultation');
+                }
+            } catch(e) {
+                showToast('Failed to connect to server');
             }
         }
 

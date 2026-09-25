@@ -409,6 +409,8 @@ public class WhatsAppWebhookController {
                 for (Doctor doc : deptDocs) {
                     docText.append(idx++).append(". *").append(doc.getName()).append("*\n")
                            .append("   • Department: *").append(doc.getDepartment()).append("*\n")
+                           .append("   • Rating: ⭐ ").append(String.format(java.util.Locale.US, "%.1f", doc.getRating()))
+                           .append("/5.0 (").append(doc.getTotalReviews()).append(" patient reviews)\n")
                            .append("   • Room: ").append(doc.getRoomNumber() != null ? doc.getRoomNumber() : "-")
                            .append(" | Fee: ₹").append((int) doc.getConsultationFee()).append("\n");
                     if (doc.getAvailableTime() != null && !doc.getAvailableTime().isBlank()) {
@@ -435,7 +437,7 @@ public class WhatsAppWebhookController {
                     for (Doctor doc : deptDocs.stream().limit(10).toList()) {
                         String title = doc.getName();
                         if (title.length() > 24) title = title.substring(0, 24);
-                        String desc = doc.getDepartment() + " • Room " + (doc.getRoomNumber() != null ? doc.getRoomNumber() : "-") + " • ₹" + (int) doc.getConsultationFee();
+                        String desc = "⭐" + String.format(java.util.Locale.US, "%.1f", doc.getRating()) + " • " + doc.getDepartment() + " • ₹" + (int) doc.getConsultationFee();
                         if (desc.length() > 72) desc = desc.substring(0, 72);
                         docRows.add(Map.of(
                                 "id", "DOC_" + doc.getId(),
@@ -451,6 +453,8 @@ public class WhatsAppWebhookController {
                             docRows
                     );
                 }
+            } else if (selectedId != null && selectedId.startsWith("DOC_RATE_")) {
+                handleDoctorRatingSubmission(fromPhone, selectedId);
             } else if (selectedId != null && selectedId.startsWith("DOC_")) {
                 Long doctorId = Long.parseLong(selectedId.replace("DOC_", ""));
                 bookAppointmentForDoctor(fromPhone, doctorId);
@@ -473,7 +477,9 @@ public class WhatsAppWebhookController {
                 return;
             }
 
-            if (buttonId.startsWith("DOC_")) {
+            if (buttonId.startsWith("DOC_RATE_")) {
+                handleDoctorRatingSubmission(fromPhone, buttonId);
+            } else if (buttonId.startsWith("DOC_")) {
                 Long doctorId = Long.parseLong(buttonId.replace("DOC_", ""));
                 bookAppointmentForDoctor(fromPhone, doctorId);
             } else if (buttonId.startsWith("MED_TAKEN_")) {
@@ -623,13 +629,18 @@ public class WhatsAppWebhookController {
         OpdScheduleService.TentativeSlot slot = opdScheduleService.calculateTentativeWindow(doctor, nextTokenNumber);
         String timeSlotDescription = slot.timeWindow();
 
-        String qrToken = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        // Generate clean random 6-digit PIN (e.g. 849201)
+        String qrToken;
+        do {
+            qrToken = String.format("%06d", java.util.concurrent.ThreadLocalRandom.current().nextInt(100000, 1000000));
+        } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
+
         Appointment appointment = new Appointment(hospital, doctor, fromPhone, "Patient",
                 LocalDate.now(), timeSlotDescription, nextTokenNumber, qrToken);
 
         appointment = appointmentRepository.save(appointment);
 
-        // Generate Branded PDF Slip with QR Code (in-memory)
+        // Generate Branded PDF Slip with Dual QR Codes (in-memory)
         try {
             pdfService.generatePdfSlip(appointment);
         } catch (Exception e) {
@@ -638,32 +649,37 @@ public class WhatsAppWebhookController {
 
         String pdfUrl = "https://mediassist-1hdl.onrender.com/api/v1/appointments/" + appointment.getId() + "/pdf";
 
-        // Send Confirmation Text with Staggered Arrival Guidance
+        // Send Confirmation Text with Staggered Arrival Guidance & Session PIN
         String confirmation = """
             🎉 *OPD Queue Token Confirmed!*
             
             🏥 *Hospital:* %s
             👨‍⚕️ *Doctor:* %s (%s)
+            ⭐ *Doctor Rating:* ⭐ %.1f/5.0 (%d reviews)
             🚪 *Room:* %s
             📅 *Date:* Today, %s
             
             👉 *YOUR QUEUE TOKEN: #%02d*
-            ⏰ *Tentative Consultation Window:* %s
+            ⏰ *Tentative Window:* %s
             🚪 *Recommended Reporting Time:* %s (15 min prior)
-            🔑 *Check-In Code:* %s
+            🔑 *Session PIN:* %s
             
-            📥 *Download Slip (PDF):*
+            📥 *Download OP Case Sheet Slip (PDF):*
             %s
             
-            💡 *Why staggered timing?*
-            To eliminate crowded waiting rooms and reduce physical wait times, please plan your arrival close to *%s*.
+            💡 *Doctor Consultation Controls:*
+            Your A4 OP slip contains two QR codes:
+            • 🟢 *START QR* (scanned upon entering doctor chamber)
+            • 🔴 *END QR* (scanned upon finishing consultation)
+            You can also show your 6-digit Session PIN *%s* at the desk.
             
-            📄 Show your QR slip or code at the reception desk for instant contactless check-in!
-            Type *"queue status"* or *"my token"* anytime to track your turn live!
+            Type *"queue status"* or *"my token"* anytime to track your live turn!
             """.formatted(
                 hospital.getName(),
                 doctor.getName(),
                 doctor.getDepartment(),
+                doctor.getRating(),
+                doctor.getTotalReviews(),
                 doctor.getRoomNumber() != null ? doctor.getRoomNumber() : "OPD Desk",
                 LocalDate.now(),
                 nextTokenNumber,
@@ -671,7 +687,7 @@ public class WhatsAppWebhookController {
                 slot.reportingTime(),
                 qrToken,
                 pdfUrl,
-                slot.reportingTime()
+                qrToken
         );
 
         whatsAppClient.sendTextMessage(fromPhone, confirmation);
@@ -681,11 +697,44 @@ public class WhatsAppWebhookController {
             whatsAppClient.sendDocumentMessage(
                     fromPhone,
                     pdfUrl,
-                    "📄 Official Appointment Slip (Token #" + String.format("%02d", nextTokenNumber) + ")",
+                    "📄 Official OP Case Sheet (Token #" + String.format("%02d", nextTokenNumber) + ")",
                     "Appointment_Slip_Token_" + nextTokenNumber + ".pdf"
             );
         } catch (Exception e) {
             logger.warn("Failed to dispatch PDF document attachment: {}", e.getMessage());
+        }
+    }
+
+    private void handleDoctorRatingSubmission(String fromPhone, String rateId) {
+        try {
+            // Format: DOC_RATE_{stars}_{apptId}
+            String payload = rateId.replace("DOC_RATE_", "");
+            String[] parts = payload.split("_");
+            int stars = Integer.parseInt(parts[0]);
+            Long apptId = Long.parseLong(parts[1]);
+
+            Appointment appt = appointmentRepository.findById(apptId).orElse(null);
+            if (appt != null) {
+                appt.setRating(stars);
+                appointmentRepository.save(appt);
+                if (appt.getDoctor() != null) {
+                    Doctor doc = appt.getDoctor();
+                    doc.addReviewRating(stars);
+                    doctorRepository.save(doc);
+                }
+            }
+
+            String starsVisual = "⭐".repeat(stars);
+            String thankYouMsg = String.format(
+                    "🙏 *Thank You for Rating!*\n\n" +
+                    "You rated your consultation: %s (*%d / 5 Stars*).\n\n" +
+                    "Your feedback helps future patients choose the best care and helps our hospital continuously improve. Wishing you good health and a speedy recovery! 🌿",
+                    starsVisual, stars
+            );
+
+            whatsAppClient.sendTextMessage(fromPhone, thankYouMsg);
+        } catch (Exception e) {
+            logger.error("Error processing doctor rating: {}", e.getMessage(), e);
         }
     }
 

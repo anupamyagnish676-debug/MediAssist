@@ -23,6 +23,8 @@ public class Doctor {
     private String roomNumber = "101";
     private double consultationFee = 500.0;
     private String availableTime; // e.g. "10:00 AM - 2:00 PM"
+    private double rating = 4.9;
+    private int totalReviews = 42;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "hospital_id")
@@ -73,4 +75,17 @@ public class Doctor {
 
     public Hospital getHospital() { return hospital; }
     public void setHospital(Hospital hospital) { this.hospital = hospital; }
+
+    public double getRating() { return rating; }
+    public void setRating(double rating) { this.rating = rating; }
+
+    public int getTotalReviews() { return totalReviews; }
+    public void setTotalReviews(int totalReviews) { this.totalReviews = totalReviews; }
+
+    public void addReviewRating(int stars) {
+        if (stars < 1 || stars > 5) return;
+        double currentTotal = this.rating * this.totalReviews;
+        this.totalReviews++;
+        this.rating = Math.round(((currentTotal + stars) / this.totalReviews) * 10.0) / 10.0;
+    }
 }

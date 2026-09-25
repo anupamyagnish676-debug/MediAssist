@@ -37,11 +37,16 @@ public class Appointment {
     private Status status = Status.CONFIRMED;
 
     private String pdfFilePath;
+    private LocalDateTime consultationStartTime;
+    private LocalDateTime consultationEndTime;
+    private Integer rating; // 1 to 5 stars
+    private String feedbackText;
     private LocalDateTime createdAt = LocalDateTime.now();
 
     public enum Status {
         CONFIRMED,
         CHECKED_IN,
+        IN_CONSULTATION,
         COMPLETED,
         CANCELLED
     }
@@ -94,6 +99,18 @@ public class Appointment {
 
     public String getPdfFilePath() { return pdfFilePath; }
     public void setPdfFilePath(String pdfFilePath) { this.pdfFilePath = pdfFilePath; }
+
+    public LocalDateTime getConsultationStartTime() { return consultationStartTime; }
+    public void setConsultationStartTime(LocalDateTime consultationStartTime) { this.consultationStartTime = consultationStartTime; }
+
+    public LocalDateTime getConsultationEndTime() { return consultationEndTime; }
+    public void setConsultationEndTime(LocalDateTime consultationEndTime) { this.consultationEndTime = consultationEndTime; }
+
+    public Integer getRating() { return rating; }
+    public void setRating(Integer rating) { this.rating = rating; }
+
+    public String getFeedbackText() { return feedbackText; }
+    public void setFeedbackText(String feedbackText) { this.feedbackText = feedbackText; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

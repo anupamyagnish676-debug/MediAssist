@@ -103,23 +103,40 @@
                 const data = await App.checkInPatient(tokenString);
 
                 if (data.success) {
+                    const sessionToken = data.qrCodeToken || tokenString;
                     resultContainer.innerHTML = `
                         <div style="text-align: center;">
-                            <span class="badge badge-success" style="font-size: 1rem; padding: 0.5rem 1rem;">✅ Check-In Confirmed</span>
-                            <div style="font-size: 4.5rem; font-weight: 900; color: var(--primary); margin: 1rem 0;">
+                            <span id="session-status-badge" class="badge badge-success" style="font-size: 1rem; padding: 0.5rem 1rem;">✅ Check-In Confirmed</span>
+                            <div style="font-size: 4.5rem; font-weight: 900; color: var(--primary); margin: 0.5rem 0;">
                                 #${String(data.serialNumber).padStart(2, '0')}
                             </div>
-                            <h2 style="color: var(--secondary); margin-bottom: 0.5rem;">Patient: ${data.patientName}</h2>
-                            <p style="color: var(--gray-600); margin-bottom: 1rem;">📱 ${data.patientPhone}</p>
+                            <h2 style="color: var(--secondary); margin-bottom: 0.25rem;">Patient: ${data.patientName}</h2>
+                            <p style="color: var(--gray-600); margin-bottom: 0.75rem;">📱 ${data.patientPhone}</p>
                             
                             <div style="background: var(--gray-50); padding: 1rem; border-radius: 8px; border: 1px solid var(--gray-200); text-align: left;">
                                 <p><strong>Consulting Doctor:</strong> ${data.doctorName} (${data.department})</p>
                                 <p style="margin-top: 0.25rem;"><strong>Assigned OPD:</strong> Room ${data.roomNumber}</p>
                                 ${data.timeSlot ? `<p style="margin-top: 0.25rem; color: #0284c7;"><strong>Tentative Slot:</strong> ${data.timeSlot}</p>` : ''}
+                                <p style="margin-top: 0.25rem;"><strong>Session PIN:</strong> <code>${sessionToken}</code></p>
+                            </div>
+
+                            <!-- Print Slip & Real-Time WhatsApp Consultation Controls -->
+                            <div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                                <button class="btn btn-primary" onclick="window.open('/api/v1/appointments/${data.appointmentId}/pdf', '_blank')" style="font-size: 1rem; padding: 0.65rem 1rem; width: 100%;">
+                                    🖨️ <strong>Print OP Case Sheet Slip</strong>
+                                </button>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn" onclick="startConsultation('${sessionToken}')" style="flex: 1; background: #16a34a; color: white; padding: 0.5rem; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                        🟢 Start Visit
+                                    </button>
+                                    <button class="btn" onclick="endConsultation('${sessionToken}')" style="flex: 1; background: #dc2626; color: white; padding: 0.5rem; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                                        🔴 End Visit
+                                    </button>
+                                </div>
                             </div>
 
                             <p style="font-size: 0.85rem; color: var(--gray-400); margin-top: 1rem;">
-                                Added to the clinic waiting room live TV queue!
+                                Added to waiting queue • Next patient alerted automatically
                             </p>
                         </div>
                     `;
@@ -146,6 +163,44 @@
         function handleManualCheckIn() {
             const val = document.getElementById('manual-token-input').value.trim();
             if (val) processToken(val);
+        }
+
+        async function startConsultation(token) {
+            try {
+                const res = await fetch('/api/v1/appointments/start-consultation?token=' + encodeURIComponent(token), { method: 'POST' });
+                const d = await res.json();
+                if (d.success) {
+                    alert('🟢 Consultation Started!\nNext waiting patient has been alerted on WhatsApp.');
+                    const st = document.getElementById('session-status-badge');
+                    if (st) {
+                        st.textContent = '🟢 In Consultation';
+                        st.style.background = '#16a34a';
+                    }
+                } else {
+                    alert(d.message || 'Error starting consultation');
+                }
+            } catch(e) {
+                alert('Could not connect to server.');
+            }
+        }
+
+        async function endConsultation(token) {
+            try {
+                const res = await fetch('/api/v1/appointments/end-consultation?token=' + encodeURIComponent(token), { method: 'POST' });
+                const d = await res.json();
+                if (d.success) {
+                    alert('🔴 Consultation Completed!\nNext patient called and 5-star rating request sent to patient.');
+                    const st = document.getElementById('session-status-badge');
+                    if (st) {
+                        st.textContent = '✅ Completed';
+                        st.style.background = '#6b7280';
+                    }
+                } else {
+                    alert(d.message || 'Error ending consultation');
+                }
+            } catch(e) {
+                alert('Could not connect to server.');
+            }
         }
 
         // Initialize webcam scanner

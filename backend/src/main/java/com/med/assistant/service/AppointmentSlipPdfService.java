@@ -111,7 +111,7 @@ public class AppointmentSlipPdfService {
         String timeSlot = appointment.getTimeSlot() != null ? appointment.getTimeSlot() : "10:30 AM - 10:45 AM";
         int serialNo = appointment.getSerialNumber() > 0 ? appointment.getSerialNumber() : 1;
         String tokenStr = String.format("%02d", serialNo);
-        String qrToken = appointment.getQrCodeToken() != null ? appointment.getQrCodeToken() : UUID.randomUUID().toString().substring(0, 8);
+        String qrToken = appointment.getQrCodeToken() != null ? appointment.getQrCodeToken() : "849201";
         String mrn = "KIMS" + String.format("%08d", (appointment.getId() != null ? appointment.getId() * 10140L : 102310010140L) % 100000000L);
 
         // --- Colors ---
@@ -221,9 +221,9 @@ public class AppointmentSlipPdfService {
                 // 3. TWO-COLUMN PATIENT & APPOINTMENT DETAILS
                 // ============================================================
                 float col1X = margin;
-                float col1ValX = margin + 85;
-                float col2X = margin + 265;
-                float col2ValX = margin + 375;
+                float col1ValX = margin + 68;
+                float col2X = margin + 190;
+                float col2ValX = margin + 268;
 
                 float infoStartY = y;
                 float lineH = 15;
@@ -231,11 +231,11 @@ public class AppointmentSlipPdfService {
                 // Left Column:
                 drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "MRN :", mrn, darkText, mutedText, 8);
                 y -= lineH;
-                drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Patient Name :", truncate(patientName, 26), darkText, darkText, 8.5f);
+                drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Patient Name :", truncate(patientName, 22), darkText, darkText, 8.5f);
                 y -= lineH;
                 drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Sex / Age :", "MALE / 21 Years", darkText, mutedText, 8);
                 y -= lineH;
-                drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Address :", truncate(hospitalAddr.contains(",") ? hospitalAddr.split(",")[1].trim() + ", ODISHA" : "BHUBANESWAR, ODISHA", 30), darkText, mutedText, 8);
+                drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Address :", truncate(hospitalAddr.contains(",") ? hospitalAddr.split(",")[1].trim() + ", ODISHA" : "BHUBANESWAR, ODISHA", 24), darkText, mutedText, 8);
                 y -= lineH;
                 drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Visit No :", "OP-00" + serialNo + " (First Visit)", darkText, mutedText, 8);
                 y -= lineH;
@@ -243,9 +243,9 @@ public class AppointmentSlipPdfService {
                 // Queue No in large prominent style
                 cs.setNonStrokingColor(mutedText[0], mutedText[1], mutedText[2]);
                 cs.beginText();
-                cs.setFont(fontBold, 9);
+                cs.setFont(fontBold, 8.5f);
                 cs.newLineAtOffset(col1X, y);
-                cs.showText("Queue / Token No :");
+                cs.showText("Queue / Token :");
                 cs.endText();
 
                 cs.setNonStrokingColor(forestGreen[0], forestGreen[1], forestGreen[2]);
@@ -261,30 +261,94 @@ public class AppointmentSlipPdfService {
                 rightY -= lineH;
                 drawGridRow(cs, fontBold, fontRegular, col2X, col2ValX, rightY, "Department :", department.toUpperCase(), darkText, darkText, 8.5f);
                 rightY -= lineH;
-                drawGridRow(cs, fontBold, fontRegular, col2X, col2ValX, rightY, "Visiting Doctor :", truncate(doctorName, 22), darkText, darkText, 8.5f);
+                drawGridRow(cs, fontBold, fontRegular, col2X, col2ValX, rightY, "Visiting Doctor :", truncate(doctorName, 20), darkText, darkText, 8.5f);
                 rightY -= lineH;
-                drawGridRow(cs, fontBold, fontRegular, col2X, col2ValX, rightY, "Consultation Type :", "FIRST VISIT (OPD)", darkText, mutedText, 8);
+                drawGridRow(cs, fontBold, fontRegular, col2X, col2ValX, rightY, "Consultation :", "FIRST VISIT (OPD)", darkText, mutedText, 8);
                 rightY -= lineH;
                 drawGridRow(cs, fontBold, fontRegular, col2X, col2ValX, rightY, "Mobile No :", patientPhone, darkText, mutedText, 8);
                 rightY -= lineH;
-                drawGridRow(cs, fontBold, fontRegular, col2X, col2ValX, rightY, "Tentative Window :", truncate(timeSlot, 25), darkText, forestGreen, 8);
+                drawGridRow(cs, fontBold, fontRegular, col2X, col2ValX, rightY, "Tentative Window :", truncate(timeSlot, 20), darkText, forestGreen, 8);
 
-                // Check-in QR Code Box
-                float qrSize = 64;
-                float qrX = pageWidth - margin - qrSize - 4;
-                float qrY = infoStartY - 70;
+                // --- DUAL QR CODES (START CONSULTATION & END CONSULTATION) ---
+                float qrBoxW = 66;
+                float qrBoxH = 88;
+                float qrY = infoStartY - qrBoxH + 12;
+                float qrSize = 48;
 
-                BufferedImage qrImage = generateQrImage("APPT:" + qrToken, 120, 120);
-                PDImageXObject pdQr = LosslessFactory.createFromImage(doc, qrImage);
-                cs.drawImage(pdQr, qrX, qrY, qrSize, qrSize);
+                // 1. START QR Box (Green)
+                float startQrX = pageWidth - margin - (2 * qrBoxW + 8);
+                cs.setNonStrokingColor(240, 253, 244); // light green bg
+                cs.addRect(startQrX, qrY, qrBoxW, qrBoxH);
+                cs.fill();
+                cs.setStrokingColor(22, 101, 52); // dark green border
+                cs.setLineWidth(0.8f);
+                cs.addRect(startQrX, qrY, qrBoxW, qrBoxH);
+                cs.stroke();
 
-                cs.setNonStrokingColor(darkText[0], darkText[1], darkText[2]);
+                // Header badge
+                cs.setNonStrokingColor(22, 101, 52);
+                cs.addRect(startQrX, qrY + qrBoxH - 14, qrBoxW, 14);
+                cs.fill();
+                cs.setNonStrokingColor(255, 255, 255);
                 cs.beginText();
-                cs.setFont(fontBold, 6);
-                String qrCap = "SCAN FOR CHECK-IN";
-                float qrCapW = fontBold.getStringWidth(qrCap) / 1000 * 6;
-                cs.newLineAtOffset(qrX + (qrSize - qrCapW) / 2, qrY - 7);
-                cs.showText(qrCap);
+                cs.setFont(fontBold, 6.5f);
+                String sTitle = "START (ENTER)";
+                float sTW = fontBold.getStringWidth(sTitle) / 1000 * 6.5f;
+                cs.newLineAtOffset(startQrX + (qrBoxW - sTW) / 2, qrY + qrBoxH - 10);
+                cs.showText(sTitle);
+                cs.endText();
+
+                // Start QR Code
+                BufferedImage startQrImg = generateQrImage("START:" + qrToken, 100, 100);
+                PDImageXObject pdStartQr = LosslessFactory.createFromImage(doc, startQrImg);
+                cs.drawImage(pdStartQr, startQrX + (qrBoxW - qrSize) / 2, qrY + 18, qrSize, qrSize);
+
+                // Start PIN text
+                cs.setNonStrokingColor(22, 101, 52);
+                cs.beginText();
+                cs.setFont(fontBold, 7f);
+                String sPin = "PIN: " + (qrToken.length() > 8 ? qrToken.substring(0, 8) : qrToken);
+                float sPinW = fontBold.getStringWidth(sPin) / 1000 * 7f;
+                cs.newLineAtOffset(startQrX + (qrBoxW - sPinW) / 2, qrY + 5);
+                cs.showText(sPin);
+                cs.endText();
+
+                // 2. END QR Box (Red)
+                float endQrX = startQrX + qrBoxW + 8;
+                cs.setNonStrokingColor(254, 242, 242); // light red bg
+                cs.addRect(endQrX, qrY, qrBoxW, qrBoxH);
+                cs.fill();
+                cs.setStrokingColor(220, 38, 38); // red border
+                cs.setLineWidth(0.8f);
+                cs.addRect(endQrX, qrY, qrBoxW, qrBoxH);
+                cs.stroke();
+
+                // Header badge
+                cs.setNonStrokingColor(220, 38, 38);
+                cs.addRect(endQrX, qrY + qrBoxH - 14, qrBoxW, 14);
+                cs.fill();
+                cs.setNonStrokingColor(255, 255, 255);
+                cs.beginText();
+                cs.setFont(fontBold, 6.5f);
+                String eTitle = "END (EXIT)";
+                float eTW = fontBold.getStringWidth(eTitle) / 1000 * 6.5f;
+                cs.newLineAtOffset(endQrX + (qrBoxW - eTW) / 2, qrY + qrBoxH - 10);
+                cs.showText(eTitle);
+                cs.endText();
+
+                // End QR Code
+                BufferedImage endQrImg = generateQrImage("END:" + qrToken, 100, 100);
+                PDImageXObject pdEndQr = LosslessFactory.createFromImage(doc, endQrImg);
+                cs.drawImage(pdEndQr, endQrX + (qrBoxW - qrSize) / 2, qrY + 18, qrSize, qrSize);
+
+                // End PIN text
+                cs.setNonStrokingColor(185, 28, 28);
+                cs.beginText();
+                cs.setFont(fontBold, 7f);
+                String ePin = "PIN: " + (qrToken.length() > 8 ? qrToken.substring(0, 8) : qrToken);
+                float ePinW = fontBold.getStringWidth(ePin) / 1000 * 7f;
+                cs.newLineAtOffset(endQrX + (qrBoxW - ePinW) / 2, qrY + 5);
+                cs.showText(ePin);
                 cs.endText();
 
                 y -= 20;
