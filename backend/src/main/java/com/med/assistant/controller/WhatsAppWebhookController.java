@@ -57,6 +57,7 @@ public class WhatsAppWebhookController {
     private final Map<String, String> userTriageDept = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, double[]> userLocation = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, Long> userPendingDoctorBooking = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, List<Long>> userRecentHospitals = new java.util.concurrent.ConcurrentHashMap<>();
 
     public record PendingTimeBooking(Long doctorId, LocalDate chosenDate) {}
     private final Map<String, PendingTimeBooking> userPendingTimeBooking = new java.util.concurrent.ConcurrentHashMap<>();
@@ -248,7 +249,7 @@ public class WhatsAppWebhookController {
                 prompt,
                 List.of(
                         new WhatsAppClientService.ButtonOption("DISCOVER_INSTANT", "⚡ Instant Booking"),
-                        new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ Nearby Hospitals")
+                        new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ View on Maps")
                 )
         );
     }
@@ -276,6 +277,16 @@ public class WhatsAppWebhookController {
             if (!found.isEmpty()) {
                 MedicalDocument doc = found.get(0);
                 whatsAppClient.sendTextMessage(fromPhone, "📁 Found your report: *" + doc.getTitle() + "*\n\n" + doc.getAiSummary());
+                return;
+            }
+        }
+
+        // 2a-1. Direct number selection for recently shown partner hospitals (e.g. "1", "2", "3")
+        if (lower.matches("^[1-5]$") && userRecentHospitals.containsKey(fromPhone)) {
+            int selIdx = Integer.parseInt(lower) - 1;
+            List<Long> recentHospIds = userRecentHospitals.get(fromPhone);
+            if (recentHospIds != null && selIdx >= 0 && selIdx < recentHospIds.size()) {
+                handleHospitalSelection(fromPhone, recentHospIds.get(selIdx));
                 return;
             }
         }
@@ -408,90 +419,7 @@ public class WhatsAppWebhookController {
 
             if (selectedId != null && selectedId.startsWith("HOSP_")) {
                 Long hospitalId = Long.parseLong(selectedId.replace("HOSP_", ""));
-                Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
-                List<Doctor> allDoctors = doctorRepository.findByHospitalIdAndAvailableTodayTrue(hospitalId);
-
-                if (allDoctors.isEmpty()) {
-                    whatsAppClient.sendTextMessage(fromPhone, "No doctors are currently available at this hospital today. Please try another hospital or view Google Maps.");
-                    return;
-                }
-
-                String preferredDept = userTriageDept.get(fromPhone);
-
-                // STRICT FILTERING: show doctors related to that specific department only!
-                List<Doctor> deptDocs = allDoctors;
-                if (preferredDept != null && !preferredDept.isBlank()) {
-                    String pDept = preferredDept.toLowerCase().trim();
-                    List<Doctor> matching = allDoctors.stream()
-                            .filter(d -> {
-                                if (d.getDepartment() == null) return false;
-                                String dDept = d.getDepartment().toLowerCase();
-                                if (pDept.contains("medicine") || pDept.equals("general medicine")) {
-                                    return dDept.contains("medicine") || dDept.contains("general") || dDept.contains("physician");
-                                }
-                                return dDept.contains(pDept);
-                            })
-                            .toList();
-                    if (!matching.isEmpty()) {
-                        deptDocs = matching;
-                    }
-                }
-
-                // Build doctor schedule message
-                StringBuilder docText = new StringBuilder();
-                String deptHeader = (preferredDept != null && !preferredDept.isBlank()) ? preferredDept + " " : "";
-                docText.append("👨‍⚕️ *").append(deptHeader).append("Specialists Available Today at ")
-                       .append(hospital != null ? hospital.getName() : "Hospital")
-                       .append(":*\n\n");
-
-                int idx = 1;
-                for (Doctor doc : deptDocs) {
-                    docText.append(idx++).append(". *").append(doc.getName()).append("*\n")
-                           .append("   • Department: *").append(doc.getDepartment()).append("*\n")
-                           .append("   • Rating: ⭐ ").append(String.format(java.util.Locale.US, "%.1f", doc.getRating()))
-                           .append("/5.0 (").append(doc.getTotalReviews()).append(" patient reviews)\n")
-                           .append("   • Room: ").append(doc.getRoomNumber() != null ? doc.getRoomNumber() : "-")
-                           .append(" | Fee: ₹").append((int) doc.getConsultationFee()).append("\n");
-                    if (doc.getAvailableTime() != null && !doc.getAvailableTime().isBlank()) {
-                        docText.append("   • Hours: ").append(doc.getAvailableTime()).append("\n");
-                    }
-                    docText.append("\n");
-                }
-                docText.append("👉 Tap a doctor below to book your OPD queue token:");
-
-                // Interactive Buttons (up to 3 doctors)
-                if (deptDocs.size() <= 3) {
-                    List<WhatsAppClientService.ButtonOption> buttons = new ArrayList<>();
-                    for (Doctor doc : deptDocs) {
-                        buttons.add(new WhatsAppClientService.ButtonOption("DOC_" + doc.getId(), formatDoctorButtonTitle(doc)));
-                    }
-                    whatsAppClient.sendInteractiveButtons(
-                            fromPhone,
-                            docText.toString(),
-                            buttons
-                    );
-                } else {
-                    // Interactive List (if more than 3 doctors)
-                    List<Map<String, String>> docRows = new ArrayList<>();
-                    for (Doctor doc : deptDocs.stream().limit(10).toList()) {
-                        String title = doc.getName();
-                        if (title.length() > 24) title = title.substring(0, 24);
-                        String desc = "⭐" + String.format(java.util.Locale.US, "%.1f", doc.getRating()) + " • " + doc.getDepartment() + " • ₹" + (int) doc.getConsultationFee();
-                        if (desc.length() > 72) desc = desc.substring(0, 72);
-                        docRows.add(Map.of(
-                                "id", "DOC_" + doc.getId(),
-                                "title", title,
-                                "description", desc
-                        ));
-                    }
-                    whatsAppClient.sendInteractiveList(
-                            fromPhone,
-                            "Available Doctors",
-                            docText.toString(),
-                            "Select Doctor",
-                            docRows
-                    );
-                }
+                handleHospitalSelection(fromPhone, hospitalId);
             } else if (selectedId != null && selectedId.startsWith("DOC_RATE_")) {
                 handleDoctorRatingSubmission(fromPhone, selectedId);
             } else if (selectedId != null && selectedId.startsWith("OFFDUTY_")) {
@@ -585,43 +513,151 @@ public class WhatsAppWebhookController {
             preferredDept = "General Medicine";
         }
 
-        List<LocationService.NearbyHospitalResult> local = locationService.findLocalHospitalsByDepartment(loc[0], loc[1], 25.0, preferredDept);
+        List<LocationService.NearbyHospitalResult> local = locationService.findLocalHospitalsWithSmartFallback(loc[0], loc[1], preferredDept);
 
         if (local.isEmpty()) {
-            String msg = "⚠️ *No Partner Clinic with " + preferredDept + " Within 25 km*\n\n"
-                    + "Currently, registered partner clinics in your area do not have an on-duty " + preferredDept + " doctor today.\n\n"
-                    + "👉 Tap below to view all hospitals near you from Google Maps:";
+            String msg = "⚠️ *No Partner Clinics Available Right Now*\n\n"
+                    + "Currently, registered partner clinics in your area do not have on-duty doctors.\n\n"
+                    + "👉 Tap below to view all hospitals near you on Google Maps:";
             whatsAppClient.sendInteractiveButtons(
                     fromPhone,
                     msg,
-                    List.of(new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ Nearby Hospitals"))
+                    List.of(new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ View on Maps"))
             );
             return;
         }
 
+        // Cache recent hospitals for direct number selection (1, 2, 3)
+        userRecentHospitals.put(fromPhone, local.stream().map(r -> r.hospital().getId()).toList());
+
         List<Map<String, String>> rows = new ArrayList<>();
         for (LocationService.NearbyHospitalResult res : local) {
             Hospital h = res.hospital();
-            String desc = res.distanceKm() + " km away • " + res.availableDoctorsCount() + " on-duty doctors";
+            String name = h.getName() != null ? h.getName().trim() : "Clinic";
+            if (name.length() > 24) name = name.substring(0, 24).trim();
+            String desc = res.distanceKm() + " km away • " + res.availableDoctorsCount() + " doc(s) on-duty";
             if (desc.length() > 72) desc = desc.substring(0, 72);
             rows.add(Map.of(
                     "id", "HOSP_" + h.getId(),
-                    "title", h.getName().length() > 24 ? h.getName().substring(0, 24) : h.getName(),
+                    "title", name,
                     "description", desc
             ));
         }
 
         String body = "🏥 *Partner Hospitals for Instant Booking*\n"
-                + "🎯 *Specialty:* *" + preferredDept + "* (Within 25 km)\n\n"
+                + "🎯 *Specialty:* *" + preferredDept + "*\n\n"
                 + "Select a hospital below to view available *" + preferredDept + "* doctors and book your OPD queue token:";
 
-        whatsAppClient.sendInteractiveList(
+        boolean sent = whatsAppClient.sendInteractiveList(
                 fromPhone,
                 "Partner Hospitals",
                 body,
                 "Select Hospital",
                 rows
         );
+
+        if (!sent) {
+            // Text Fallback if interactive list fails or unsupported
+            StringBuilder sb = new StringBuilder();
+            sb.append("🏥 *Partner Hospitals for Instant Booking*\n");
+            sb.append("🎯 *Specialty:* *").append(preferredDept).append("*\n\n");
+            sb.append("Please select a hospital by replying with its number:\n\n");
+            for (int i = 0; i < local.size(); i++) {
+                Hospital h = local.get(i).hospital();
+                sb.append((i + 1)).append("️⃣ *").append(h.getName()).append("*\n");
+                sb.append("   📍 ").append(local.get(i).distanceKm()).append(" km away • ")
+                        .append(local.get(i).availableDoctorsCount()).append(" doctor(s) on-duty\n\n");
+            }
+            sb.append("👉 Reply with *1*, *2*, or *3* to view available doctors!");
+            whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+        }
+    }
+
+    private void handleHospitalSelection(String fromPhone, Long hospitalId) {
+        Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
+        List<Doctor> allDoctors = doctorRepository.findByHospitalIdAndAvailableTodayTrue(hospitalId);
+
+        if (allDoctors.isEmpty()) {
+            whatsAppClient.sendTextMessage(fromPhone, "No doctors are currently available at this hospital today. Please try another hospital or view Google Maps.");
+            return;
+        }
+
+        String preferredDept = userTriageDept.get(fromPhone);
+
+        // Strict / smart filtering: show doctors related to that specific department
+        List<Doctor> deptDocs = allDoctors;
+        if (preferredDept != null && !preferredDept.isBlank()) {
+            String pDept = preferredDept.toLowerCase().trim();
+            List<Doctor> matching = allDoctors.stream()
+                    .filter(d -> {
+                        if (d.getDepartment() == null) return false;
+                        String dDept = d.getDepartment().toLowerCase();
+                        if (pDept.contains("medicine") || pDept.equals("general medicine")) {
+                            return dDept.contains("medicine") || dDept.contains("general") || dDept.contains("physician");
+                        }
+                        return dDept.contains(pDept);
+                    })
+                    .toList();
+            if (!matching.isEmpty()) {
+                deptDocs = matching;
+            }
+        }
+
+        // Build doctor schedule message
+        StringBuilder docText = new StringBuilder();
+        String deptHeader = (preferredDept != null && !preferredDept.isBlank()) ? preferredDept + " " : "";
+        docText.append("👨‍⚕️ *").append(deptHeader).append("Specialists Available Today at ")
+               .append(hospital != null ? hospital.getName() : "Hospital")
+               .append(":*\n\n");
+
+        int idx = 1;
+        for (Doctor doc : deptDocs) {
+            docText.append(idx++).append(". *").append(doc.getName()).append("*\n")
+                   .append("   • Department: *").append(doc.getDepartment()).append("*\n")
+                   .append("   • Rating: ⭐ ").append(String.format(java.util.Locale.US, "%.1f", doc.getRating()))
+                   .append("/5.0 (").append(doc.getTotalReviews()).append(" patient reviews)\n")
+                   .append("   • Room: ").append(doc.getRoomNumber() != null ? doc.getRoomNumber() : "-")
+                   .append(" | Fee: ₹").append((int) doc.getConsultationFee()).append("\n");
+            if (doc.getAvailableTime() != null && !doc.getAvailableTime().isBlank()) {
+                docText.append("   • Hours: ").append(doc.getAvailableTime()).append("\n");
+            }
+            docText.append("\n");
+        }
+        docText.append("👉 Tap a doctor below to book your OPD queue token:");
+
+        // Interactive Buttons (up to 3 doctors)
+        if (deptDocs.size() <= 3) {
+            List<WhatsAppClientService.ButtonOption> buttons = new ArrayList<>();
+            for (Doctor doc : deptDocs) {
+                buttons.add(new WhatsAppClientService.ButtonOption("DOC_" + doc.getId(), formatDoctorButtonTitle(doc)));
+            }
+            whatsAppClient.sendInteractiveButtons(
+                    fromPhone,
+                    docText.toString(),
+                    buttons
+            );
+        } else {
+            // Interactive List (if more than 3 doctors)
+            List<Map<String, String>> docRows = new ArrayList<>();
+            for (Doctor doc : deptDocs.stream().limit(10).toList()) {
+                String title = doc.getName();
+                if (title.length() > 24) title = title.substring(0, 24);
+                String desc = "⭐" + String.format(java.util.Locale.US, "%.1f", doc.getRating()) + " • " + doc.getDepartment() + " • ₹" + (int) doc.getConsultationFee();
+                if (desc.length() > 72) desc = desc.substring(0, 72);
+                docRows.add(Map.of(
+                        "id", "DOC_" + doc.getId(),
+                        "title", title,
+                        "description", desc
+                ));
+            }
+            whatsAppClient.sendInteractiveList(
+                    fromPhone,
+                    "Available Doctors",
+                    docText.toString(),
+                    "Select Doctor",
+                    docRows
+            );
+        }
     }
 
     private void handleDiscoverGoogleMaps(String fromPhone) {

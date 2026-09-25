@@ -98,6 +98,39 @@ public class LocationService {
     }
 
     /**
+     * Finds partner hospitals with a resilient multi-tier fallback:
+     * Tier 1: Matching department within 25 km
+     * Tier 2: Matching department within 100 km
+     * Tier 3: Any department within 100 km
+     * Tier 4: All active partner hospitals nationwide sorted by distance
+     * Guarantees the patient is never presented with an empty or broken list.
+     */
+    public List<NearbyHospitalResult> findLocalHospitalsWithSmartFallback(double userLat, double userLon, String department) {
+        List<NearbyHospitalResult> res = findLocalHospitalsByDepartment(userLat, userLon, 25.0, department);
+        if (!res.isEmpty()) return res;
+
+        res = findLocalHospitalsByDepartment(userLat, userLon, 100.0, department);
+        if (!res.isEmpty()) return res;
+
+        res = findNearbyHospitals(userLat, userLon, 100.0);
+        if (!res.isEmpty()) return res;
+
+        // Nationwide partner fallback: return closest registered partner hospitals
+        List<Hospital> allHospitals = hospitalRepository.findByActiveTrue();
+        return allHospitals.stream()
+                .map(h -> {
+                    double dist = calculateDistanceKm(userLat, userLon, h.getLatitude(), h.getLongitude());
+                    int availableDocs = (int) h.getDoctors().stream()
+                            .filter(com.med.assistant.model.Doctor::isAvailableToday)
+                            .count();
+                    return new NearbyHospitalResult(h, dist, availableDocs);
+                })
+                .sorted(Comparator.comparingDouble(NearbyHospitalResult::distanceKm))
+                .limit(5)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Calculates nearby hospitals within a radius using Haversine formula.
      * Works seamlessly across both H2 (local testing) and PostgreSQL.
      */

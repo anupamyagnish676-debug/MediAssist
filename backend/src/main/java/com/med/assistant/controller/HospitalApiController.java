@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import javax.sql.DataSource;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -93,6 +94,74 @@ public class HospitalApiController {
             }
         }
         return ResponseEntity.ok(map);
+    }
+
+    @RequestMapping(value = "/heal-schema", method = {RequestMethod.GET, RequestMethod.POST})
+    public ResponseEntity<Map<String, Object>> healSchema() {
+        Map<String, Object> res = new HashMap<>();
+        List<String> executed = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
+
+        String[] stmts = {
+                "ALTER TABLE medication_reminders ADD COLUMN IF NOT EXISTS snooze_count INTEGER DEFAULT 0",
+                "ALTER TABLE medication_reminders ADD COLUMN IF NOT EXISTS snooze_until TIMESTAMP",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 15",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS qualification VARCHAR(255) DEFAULT 'MBBS, MD'",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS available_days VARCHAR(255) DEFAULT 'MON,TUE,WED,THU,FRI,SAT'",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS first_half_time VARCHAR(255) DEFAULT '09:00 AM - 01:00 PM'",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS second_half_time VARCHAR(255) DEFAULT '05:00 PM - 09:00 PM'",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS first_half_limit INTEGER DEFAULT 15",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS second_half_limit INTEGER DEFAULT 15",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS available_time VARCHAR(255)",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS rating DOUBLE PRECISION DEFAULT 4.9",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS total_reviews INTEGER DEFAULT 42",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS room_number VARCHAR(255) DEFAULT '101'",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS consultation_fee DOUBLE PRECISION DEFAULT 500.0",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS available_today BOOLEAN DEFAULT TRUE",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS current_token_count INTEGER DEFAULT 0",
+                "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS daily_token_limit INTEGER DEFAULT 25",
+                "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS shift VARCHAR(50)",
+                "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS pdf_file_path VARCHAR(255)",
+                "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS consultation_start_time TIMESTAMP",
+                "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS consultation_end_time TIMESTAMP",
+                "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS rating INTEGER",
+                "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS feedback_text TEXT",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS logo_url TEXT",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS brand_color VARCHAR(50) DEFAULT '#0284c7'",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS registration_number VARCHAR(255)",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_name VARCHAR(255)",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_email VARCHAR(255)",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_phone VARCHAR(255)",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS specialties VARCHAR(255)",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS number_of_beds INTEGER DEFAULT 0",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS application_note TEXT",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS city VARCHAR(255)",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS state VARCHAR(255)",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS applied_at TIMESTAMP",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE'",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE"
+        };
+
+        try (java.sql.Connection conn = dataSource.getConnection();
+             java.sql.Statement stmt = conn.createStatement()) {
+            for (String sql : stmts) {
+                try {
+                    stmt.execute(sql);
+                    executed.add(sql);
+                } catch (Exception ex) {
+                    errors.add(sql + " -> " + ex.getMessage());
+                }
+            }
+            res.put("status", errors.isEmpty() ? "SUCCESS" : "PARTIAL_SUCCESS");
+            res.put("executedCount", executed.size());
+            res.put("errors", errors);
+        } catch (Exception e) {
+            res.put("status", "FAILED");
+            res.put("error", e.getMessage());
+        }
+        return ResponseEntity.ok(res);
     }
 
     @GetMapping("/{hospitalId}/doctors")

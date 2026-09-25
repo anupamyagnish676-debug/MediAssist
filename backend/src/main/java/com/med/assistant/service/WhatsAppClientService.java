@@ -40,7 +40,7 @@ public class WhatsAppClientService {
     /**
      * Send Quick-Reply Interactive Buttons (e.g. [Taken] [Snooze], or Doctor Selection).
      */
-    public void sendInteractiveButtons(String toPhone, String bodyText, List<ButtonOption> buttons) {
+    public boolean sendInteractiveButtons(String toPhone, String bodyText, List<ButtonOption> buttons) {
         if (bodyText != null && bodyText.length() > 1020) {
             logger.warn("sendInteractiveButtons: bodyText exceeded 1020 chars (length={}). Truncating to avoid Meta API error 100.", bodyText.length());
             bodyText = bodyText.substring(0, 1017) + "...";
@@ -48,9 +48,13 @@ public class WhatsAppClientService {
 
         List<Map<String, Object>> buttonList = new ArrayList<>();
         for (ButtonOption btn : buttons) {
+            String bTitle = btn.title() != null ? btn.title().trim() : "Select";
+            if (bTitle.length() > 20) {
+                bTitle = bTitle.substring(0, 20).trim();
+            }
             buttonList.add(Map.of(
                     "type", "reply",
-                    "reply", Map.of("id", btn.id(), "title", btn.title())
+                    "reply", Map.of("id", btn.id(), "title", bTitle)
             ));
         }
 
@@ -67,21 +71,31 @@ public class WhatsAppClientService {
                 "interactive", interactive
         );
 
-        postToWhatsApp(payload);
+        return postToWhatsApp(payload);
     }
 
     /**
      * Send Interactive List Message (e.g. Nearby Hospitals or Doctors).
      */
-    public void sendInteractiveList(String toPhone, String title, String bodyText, String buttonText,
+    public boolean sendInteractiveList(String toPhone, String title, String bodyText, String buttonText,
                                     List<Map<String, String>> rows) {
         if (bodyText != null && bodyText.length() > 1020) {
             logger.warn("sendInteractiveList: bodyText exceeded 1020 chars (length={}). Truncating to avoid Meta API error 100.", bodyText.length());
             bodyText = bodyText.substring(0, 1017) + "...";
         }
 
+        String safeButtonText = buttonText != null ? buttonText.trim() : "Options";
+        if (safeButtonText.length() > 20) {
+            safeButtonText = safeButtonText.substring(0, 20).trim();
+        }
+
+        String safeTitle = title != null ? title.trim() : "List";
+        if (safeTitle.length() > 24) {
+            safeTitle = safeTitle.substring(0, 24).trim();
+        }
+
         Map<String, Object> section = Map.of(
-                "title", title,
+                "title", safeTitle,
                 "rows", rows
         );
 
@@ -89,7 +103,7 @@ public class WhatsAppClientService {
                 "type", "list",
                 "body", Map.of("text", bodyText),
                 "action", Map.of(
-                        "button", buttonText,
+                        "button", safeButtonText,
                         "sections", List.of(section)
                 )
         );
@@ -101,7 +115,7 @@ public class WhatsAppClientService {
                 "interactive", interactive
         );
 
-        postToWhatsApp(payload);
+        return postToWhatsApp(payload);
     }
 
     /**

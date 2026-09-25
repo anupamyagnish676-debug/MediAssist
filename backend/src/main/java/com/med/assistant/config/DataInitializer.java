@@ -39,13 +39,58 @@ public class DataInitializer {
                                           org.springframework.jdbc.core.JdbcTemplate jdbcTemplate) {
         return args -> {
             try {
-                // Ensure schema columns exist for medication_reminders
+                // Ensure schema columns exist across all tables (self-healing for PostgreSQL / Supabase)
                 try {
+                    // medication_reminders
                     jdbcTemplate.execute("ALTER TABLE medication_reminders ADD COLUMN IF NOT EXISTS snooze_count INTEGER DEFAULT 0");
                     jdbcTemplate.execute("ALTER TABLE medication_reminders ADD COLUMN IF NOT EXISTS snooze_until TIMESTAMP");
-                    logger.info("Verified medication_reminders table schema columns (snooze_count, snooze_until)");
+
+                    // doctors
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 15");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS qualification VARCHAR(255) DEFAULT 'MBBS, MD'");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS available_days VARCHAR(255) DEFAULT 'MON,TUE,WED,THU,FRI,SAT'");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS first_half_time VARCHAR(255) DEFAULT '09:00 AM - 01:00 PM'");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS second_half_time VARCHAR(255) DEFAULT '05:00 PM - 09:00 PM'");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS first_half_limit INTEGER DEFAULT 15");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS second_half_limit INTEGER DEFAULT 15");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS available_time VARCHAR(255)");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS rating DOUBLE PRECISION DEFAULT 4.9");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS total_reviews INTEGER DEFAULT 42");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS room_number VARCHAR(255) DEFAULT '101'");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS consultation_fee DOUBLE PRECISION DEFAULT 500.0");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS available_today BOOLEAN DEFAULT TRUE");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS current_token_count INTEGER DEFAULT 0");
+                    jdbcTemplate.execute("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS daily_token_limit INTEGER DEFAULT 25");
+
+                    // appointments
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS shift VARCHAR(50)");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS pdf_file_path VARCHAR(255)");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS consultation_start_time TIMESTAMP");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS consultation_end_time TIMESTAMP");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS rating INTEGER");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS feedback_text TEXT");
+
+                    // hospitals
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS logo_url TEXT");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS brand_color VARCHAR(50) DEFAULT '#0284c7'");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS registration_number VARCHAR(255)");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_name VARCHAR(255)");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_email VARCHAR(255)");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_phone VARCHAR(255)");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS specialties VARCHAR(255)");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS number_of_beds INTEGER DEFAULT 0");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS application_note TEXT");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS city VARCHAR(255)");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS state VARCHAR(255)");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS applied_at TIMESTAMP");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS rejection_reason TEXT");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE'");
+                    jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE");
+
+                    logger.info("Successfully verified and self-healed database schema columns across all tables");
                 } catch (Exception se) {
-                    logger.warn("Could not alter medication_reminders table: {}", se.getMessage());
+                    logger.warn("Schema self-healing notice (can be ignored on fresh DB): {}", se.getMessage());
                 }
 
                 // Always ensure Super Admin account exists
