@@ -230,10 +230,10 @@ public class WhatsAppClientService {
     }
 
     private String resolvePhoneNumberId() {
-        if (phoneNumberId != null && !phoneNumberId.isBlank() && !phoneNumberId.contains("100000000000000") && !phoneNumberId.contains("132599243944197")) {
+        if (phoneNumberId != null && !phoneNumberId.isBlank() && !phoneNumberId.contains("100000000000000")) {
             return phoneNumberId.trim();
         }
-        return "1325869243944497";
+        return "1323269674204418";
     }
 
     public boolean sendTextMessage(String toPhone, String text) {
