@@ -594,11 +594,12 @@ public class WhatsAppWebhookController {
             ⏰ *Time:* 11:00 AM
             
             👉 *YOUR QUEUE TOKEN: #%02d*
+            🔑 *Check-In Code:* %s
             
             📥 *Download Slip (PDF):*
             %s
             
-            📄 Show the QR code on your slip to the receptionist upon arrival for instant check-in!
+            📄 Show the QR code or Code on your slip to the receptionist upon arrival for instant check-in!
             """.formatted(
                 hospital.getName(),
                 doctor.getName(),
@@ -606,6 +607,7 @@ public class WhatsAppWebhookController {
                 doctor.getRoomNumber(),
                 LocalDate.now(),
                 nextTokenNumber,
+                qrToken,
                 pdfUrl
         );
 

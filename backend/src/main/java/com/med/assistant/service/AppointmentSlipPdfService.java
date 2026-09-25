@@ -291,11 +291,23 @@ public class AppointmentSlipPdfService {
                 BufferedImage qrImage = generateQrImage("APPT:" + qrToken, 200, 200);
                 PDImageXObject pdImage = LosslessFactory.createFromImage(doc, qrImage);
 
-                float qrSize = 80;
+                float qrSize = 75;
                 float qrX = margin + (contentWidth - qrSize) / 2;
                 cs.drawImage(pdImage, qrX, y - qrSize, qrSize, qrSize);
 
-                y -= qrSize + 6;
+                y -= qrSize + 5;
+
+                // QR Code Token string (e.g. "Code: DEMO-QR-001" or "Code: AB12CD34")
+                cs.setNonStrokingColor(darkText[0], darkText[1], darkText[2]);
+                cs.beginText();
+                cs.setFont(fontBold, 8);
+                String codeLine = "Code: " + qrToken;
+                float codeLineWidth = fontBold.getStringWidth(codeLine) / 1000 * 8;
+                cs.newLineAtOffset((pageWidth - codeLineWidth) / 2, y);
+                cs.showText(codeLine);
+                cs.endText();
+
+                y -= 11;
 
                 // "Scan for Quick Check-In" text
                 cs.setNonStrokingColor(mutedText[0], mutedText[1], mutedText[2]);
@@ -307,7 +319,7 @@ public class AppointmentSlipPdfService {
                 cs.showText(scanText);
                 cs.endText();
 
-                y -= 14;
+                y -= 12;
 
                 // Separator
                 cs.setStrokingColor(separatorColor[0], separatorColor[1], separatorColor[2]);
