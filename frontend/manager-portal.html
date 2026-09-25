@@ -141,30 +141,64 @@
                     </div>
                     
                     <form id="add-doctor-form">
+                        <h3 style="margin-top:0; margin-bottom:1rem; color:#1f2937;">Add New Specialist / Doctor</h3>
                         <div class="form-grid">
                             <div class="form-group">
-                                <label>Doctor Name</label>
-                                <input type="text" id="doc-name" required>
+                                <label>Doctor Name *</label>
+                                <input type="text" id="doc-name" placeholder="e.g. Dr. Rajesh Mohapatra" required>
                             </div>
                             <div class="form-group">
-                                <label>Department</label>
-                                <input type="text" id="doc-dept" required>
+                                <label>Department / Specialty *</label>
+                                <input type="text" id="doc-dept" placeholder="e.g. Cardiology" required>
                             </div>
                             <div class="form-group">
-                                <label>Room Number</label>
-                                <input type="text" id="doc-room">
+                                <label>Qualification / Degree</label>
+                                <input type="text" id="doc-qual" placeholder="e.g. MBBS, MD (Cardiology)" value="MBBS, MD">
                             </div>
                             <div class="form-group">
-                                <label>Consultation Fee</label>
-                                <input type="number" id="doc-fee" required>
+                                <label>OPD Room Number</label>
+                                <input type="text" id="doc-room" placeholder="e.g. 201" value="101">
                             </div>
                             <div class="form-group">
-                                <label>Daily Token Limit</label>
-                                <input type="number" id="doc-limit" required>
+                                <label>Consultation Fee (₹) *</label>
+                                <input type="number" id="doc-fee" value="500" required>
                             </div>
                             <div class="form-group">
-                                <label>Available Time (e.g. 10:00 AM - 2:00 PM)</label>
-                                <input type="text" id="doc-available-time" placeholder="10:00 AM - 2:00 PM">
+                                <label>Avg Consultation Time / Patient</label>
+                                <select id="doc-duration">
+                                    <option value="10">10 Minutes</option>
+                                    <option value="15" selected>15 Minutes (Standard)</option>
+                                    <option value="20">20 Minutes</option>
+                                    <option value="30">30 Minutes (Deep consult)</option>
+                                </select>
+                            </div>
+                            <div class="form-group full">
+                                <label>Available Days of the Week</label>
+                                <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-top:0.25rem;">
+                                    <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="add-day" value="MON" checked> Mon</label>
+                                    <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="add-day" value="TUE" checked> Tue</label>
+                                    <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="add-day" value="WED" checked> Wed</label>
+                                    <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="add-day" value="THU" checked> Thu</label>
+                                    <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="add-day" value="FRI" checked> Fri</label>
+                                    <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="add-day" value="SAT" checked> Sat</label>
+                                    <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="add-day" value="SUN"> Sun</label>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>🌅 1st Half (Morning Shift Timing)</label>
+                                <input type="text" id="doc-shift1" value="09:00 AM - 01:00 PM" placeholder="09:00 AM - 01:00 PM">
+                            </div>
+                            <div class="form-group">
+                                <label>1st Half Token Limit</label>
+                                <input type="number" id="doc-shift1-limit" value="15" min="1">
+                            </div>
+                            <div class="form-group">
+                                <label>🌆 2nd Half (Evening Shift Timing)</label>
+                                <input type="text" id="doc-shift2" value="05:00 PM - 09:00 PM" placeholder="05:00 PM - 09:00 PM">
+                            </div>
+                            <div class="form-group">
+                                <label>2nd Half Token Limit</label>
+                                <input type="number" id="doc-shift2-limit" value="15" min="1">
                             </div>
                         </div>
                         <div class="flex-actions" style="margin-top: 1rem;">
@@ -173,15 +207,79 @@
                         </div>
                     </form>
 
+                    <!-- Edit Schedule Modal -->
+                    <div id="edit-schedule-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+                        <div style="background:white; border-radius:8px; max-width:550px; width:90%; padding:1.75rem; max-height:90vh; overflow-y:auto; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+                            <h3 id="edit-modal-title" style="margin-top:0; margin-bottom:1rem; color:#111827;">Edit Doctor Schedule</h3>
+                            <input type="hidden" id="edit-doc-id">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label>Qualification / Degree</label>
+                                    <input type="text" id="edit-doc-qual">
+                                </div>
+                                <div class="form-group">
+                                    <label>OPD Room Number</label>
+                                    <input type="text" id="edit-doc-room">
+                                </div>
+                                <div class="form-group">
+                                    <label>Consultation Fee (₹)</label>
+                                    <input type="number" id="edit-doc-fee">
+                                </div>
+                                <div class="form-group">
+                                    <label>Avg Duration / Patient</label>
+                                    <select id="edit-doc-duration">
+                                        <option value="10">10 Minutes</option>
+                                        <option value="15">15 Minutes</option>
+                                        <option value="20">20 Minutes</option>
+                                        <option value="30">30 Minutes</option>
+                                    </select>
+                                </div>
+                                <div class="form-group full">
+                                    <label>Available Working Days</label>
+                                    <div style="display:flex; gap:0.75rem; flex-wrap:wrap; margin-top:0.25rem;">
+                                        <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="edit-day" value="MON"> Mon</label>
+                                        <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="edit-day" value="TUE"> Tue</label>
+                                        <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="edit-day" value="WED"> Wed</label>
+                                        <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="edit-day" value="THU"> Thu</label>
+                                        <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="edit-day" value="FRI"> Fri</label>
+                                        <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="edit-day" value="SAT"> Sat</label>
+                                        <label style="display:flex; align-items:center; gap:0.35rem; font-weight:normal; cursor:pointer;"><input type="checkbox" name="edit-day" value="SUN"> Sun</label>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label>🌅 1st Half (Morning Timing)</label>
+                                    <input type="text" id="edit-doc-shift1">
+                                </div>
+                                <div class="form-group">
+                                    <label>1st Half Quota</label>
+                                    <input type="number" id="edit-doc-shift1-limit" min="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>🌆 2nd Half (Evening Timing)</label>
+                                    <input type="text" id="edit-doc-shift2">
+                                </div>
+                                <div class="form-group">
+                                    <label>2nd Half Quota</label>
+                                    <input type="number" id="edit-doc-shift2-limit" min="1">
+                                </div>
+                            </div>
+                            <div class="flex-actions" style="margin-top:1.5rem; justify-content:flex-end;">
+                                <button type="button" class="btn btn-gray" onclick="document.getElementById('edit-schedule-modal').style.display='none'">Cancel</button>
+                                <button type="button" class="btn btn-blue" onclick="saveDoctorScheduleEdit()">Update Schedule</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <table id="doctors-table">
                         <thead>
                             <tr>
-                                <th>Name</th>
+                                <th>Doctor</th>
                                 <th>Department</th>
                                 <th>Room</th>
                                 <th>Fee</th>
+                                <th>Days</th>
+                                <th>Shift Timings</th>
                                 <th>Limit</th>
-                                <th>Available Time</th>
                                 <th>Status</th>
                                 <th>Actions</th>
                             </tr>
@@ -363,28 +461,58 @@
             } catch(e) {}
         }
 
+        let loadedDoctors = [];
+
+        function formatWorkingDays(daysStr) {
+            if (!daysStr || daysStr.toUpperCase() === 'ALL') return 'Mon - Sun';
+            const upper = daysStr.toUpperCase();
+            if (upper.includes('MON') && upper.includes('TUE') && upper.includes('WED') && upper.includes('THU') && upper.includes('FRI') && upper.includes('SAT') && !upper.includes('SUN')) {
+                return 'Mon - Sat';
+            }
+            if (upper.includes('MON') && upper.includes('TUE') && upper.includes('WED') && upper.includes('THU') && upper.includes('FRI') && !upper.includes('SAT') && !upper.includes('SUN')) {
+                return 'Mon - Fri';
+            }
+            return daysStr;
+        }
+
         async function loadDoctors() {
             try {
                 const res = await fetch('/api/v1/hospital-manager/doctors');
                 if(res.ok) {
-                    const doctors = await res.json();
+                    loadedDoctors = await res.json();
                     const tbody = document.querySelector('#doctors-table tbody');
-                    tbody.innerHTML = doctors.map(d => {
+                    tbody.innerHTML = loadedDoctors.map(d => {
                         const isAvail = d.availableToday !== undefined ? d.availableToday : d.available;
+                        const qual = d.qualification || 'MBBS, MD';
+                        const days = formatWorkingDays(d.availableDays);
+                        const s1 = d.firstHalfTime || '09:00 AM - 01:00 PM';
+                        const s1Limit = d.firstHalfLimit || 15;
+                        const s2 = d.secondHalfTime || '05:00 PM - 09:00 PM';
+                        const s2Limit = d.secondHalfLimit || 15;
+                        const duration = d.consultationDurationMinutes || 15;
+
                         return `
                         <tr>
-                            <td>${d.name}</td>
+                            <td>
+                                <strong>${d.name}</strong>
+                                <div style="font-size:0.75rem; color:#4b5563;">${qual}</div>
+                                <div style="font-size:0.7rem; color:#0284c7;">⏱️ ~${duration} mins/pt</div>
+                            </td>
                             <td>${d.department}</td>
                             <td>${d.roomNumber || '-'}</td>
                             <td>₹${d.consultationFee}</td>
-                            <td>${d.dailyTokenLimit}</td>
-                            <td>${d.availableTime || 'Not Set'}</td>
-                            <td><span class="badge ${isAvail ? 'badge-active' : 'badge-inactive'}">${isAvail ? 'Available' : 'Unavailable'}</span></td>
+                            <td><span class="badge" style="background:#e0f2fe; color:#0369a1; font-weight:600;">${days}</span></td>
                             <td>
-                                <div class="flex-actions">
-                                    <button class="btn btn-blue" onclick="editDocTime(${d.id}, '${(d.availableTime||'').replace(/'/g, "\\'")}')">Edit</button>
-                                    <button class="btn btn-gray" onclick="toggleDoc(${d.id})">Toggle</button>
-                                    <button class="btn btn-red" onclick="deleteDoc(${d.id})">Del</button>
+                                <div style="font-size:0.8rem; margin-bottom:2px;"><strong style="color:#0284c7;">🌅 1st:</strong> ${s1} <span style="color:#6b7280;">(${s1Limit})</span></div>
+                                <div style="font-size:0.8rem;"><strong style="color:#ea580c;">🌆 2nd:</strong> ${s2} <span style="color:#6b7280;">(${s2Limit})</span></div>
+                            </td>
+                            <td><strong>${d.dailyTokenLimit}</strong></td>
+                            <td><span class="badge ${isAvail ? 'badge-active' : 'badge-inactive'}">${isAvail ? 'Available' : 'On Leave'}</span></td>
+                            <td>
+                                <div class="flex-actions" style="flex-wrap:wrap;">
+                                    <button class="btn btn-blue" onclick="openEditScheduleModal(${d.id})" style="padding:0.35rem 0.65rem; font-size:0.8rem;">Edit Schedule</button>
+                                    <button class="btn btn-gray" onclick="toggleDoc(${d.id})" style="padding:0.35rem 0.65rem; font-size:0.8rem;">${isAvail ? 'Set Leave' : 'Set Available'}</button>
+                                    <button class="btn btn-red" onclick="deleteDoc(${d.id})" style="padding:0.35rem 0.65rem; font-size:0.8rem;">Del</button>
                                 </div>
                             </td>
                         </tr>
@@ -421,13 +549,24 @@
 
         document.getElementById('add-doctor-form').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const checkedDays = Array.from(document.querySelectorAll('input[name="add-day"]:checked')).map(cb => cb.value);
+            const daysStr = checkedDays.length > 0 ? checkedDays.join(',') : 'MON,TUE,WED,THU,FRI,SAT';
+            const s1Limit = parseInt(document.getElementById('doc-shift1-limit').value) || 15;
+            const s2Limit = parseInt(document.getElementById('doc-shift2-limit').value) || 15;
+
             const payload = {
-                name: document.getElementById('doc-name').value,
-                department: document.getElementById('doc-dept').value,
-                roomNumber: document.getElementById('doc-room').value,
-                consultationFee: parseFloat(document.getElementById('doc-fee').value),
-                dailyTokenLimit: parseInt(document.getElementById('doc-limit').value),
-                availableTime: document.getElementById('doc-available-time').value,
+                name: document.getElementById('doc-name').value.trim(),
+                department: document.getElementById('doc-dept').value.trim(),
+                qualification: document.getElementById('doc-qual').value.trim(),
+                roomNumber: document.getElementById('doc-room').value.trim(),
+                consultationFee: parseFloat(document.getElementById('doc-fee').value) || 500,
+                consultationDurationMinutes: parseInt(document.getElementById('doc-duration').value) || 15,
+                availableDays: daysStr,
+                firstHalfTime: document.getElementById('doc-shift1').value.trim(),
+                firstHalfLimit: s1Limit,
+                secondHalfTime: document.getElementById('doc-shift2').value.trim(),
+                secondHalfLimit: s2Limit,
+                dailyTokenLimit: s1Limit + s2Limit,
                 available: true
             };
             try {
@@ -437,19 +576,84 @@
                     body: JSON.stringify(payload)
                 });
                 if(res.ok) {
-                    showToast('Doctor added');
+                    showToast('Specialist Doctor Added Successfully');
                     document.getElementById('add-doctor-form').reset();
                     document.getElementById('add-doctor-form').style.display='none';
                     loadDoctors();
                     loadDashboardData();
+                } else {
+                    const err = await res.json();
+                    alert('Error adding doctor: ' + (err.message || 'Please check fields'));
                 }
-            } catch(e) {}
+            } catch(e) { console.error(e); }
         });
+
+        function openEditScheduleModal(docId) {
+            const d = loadedDoctors.find(x => x.id === docId);
+            if (!d) return;
+
+            document.getElementById('edit-doc-id').value = d.id;
+            document.getElementById('edit-modal-title').textContent = `Edit Schedule — ${d.name}`;
+            document.getElementById('edit-doc-qual').value = d.qualification || 'MBBS, MD';
+            document.getElementById('edit-doc-room').value = d.roomNumber || '101';
+            document.getElementById('edit-doc-fee').value = d.consultationFee || 500;
+            document.getElementById('edit-doc-duration').value = String(d.consultationDurationMinutes || 15);
+            document.getElementById('edit-doc-shift1').value = d.firstHalfTime || '09:00 AM - 01:00 PM';
+            document.getElementById('edit-doc-shift1-limit').value = d.firstHalfLimit || 15;
+            document.getElementById('edit-doc-shift2').value = d.secondHalfTime || '05:00 PM - 09:00 PM';
+            document.getElementById('edit-doc-shift2-limit').value = d.secondHalfLimit || 15;
+
+            const daysUpper = (d.availableDays || 'MON,TUE,WED,THU,FRI,SAT').toUpperCase();
+            document.querySelectorAll('input[name="edit-day"]').forEach(cb => {
+                cb.checked = daysUpper.includes('ALL') || daysUpper.includes(cb.value);
+            });
+
+            document.getElementById('edit-schedule-modal').style.display = 'flex';
+        }
+
+        async function saveDoctorScheduleEdit() {
+            const id = document.getElementById('edit-doc-id').value;
+            if (!id) return;
+
+            const checkedDays = Array.from(document.querySelectorAll('input[name="edit-day"]:checked')).map(cb => cb.value);
+            const daysStr = checkedDays.length > 0 ? checkedDays.join(',') : 'MON,TUE,WED,THU,FRI,SAT';
+            const s1Limit = parseInt(document.getElementById('edit-doc-shift1-limit').value) || 15;
+            const s2Limit = parseInt(document.getElementById('edit-doc-shift2-limit').value) || 15;
+
+            const payload = {
+                qualification: document.getElementById('edit-doc-qual').value.trim(),
+                roomNumber: document.getElementById('edit-doc-room').value.trim(),
+                consultationFee: parseFloat(document.getElementById('edit-doc-fee').value) || 500,
+                consultationDurationMinutes: parseInt(document.getElementById('edit-doc-duration').value) || 15,
+                availableDays: daysStr,
+                firstHalfTime: document.getElementById('edit-doc-shift1').value.trim(),
+                firstHalfLimit: s1Limit,
+                secondHalfTime: document.getElementById('edit-doc-shift2').value.trim(),
+                secondHalfLimit: s2Limit,
+                dailyTokenLimit: s1Limit + s2Limit
+            };
+
+            try {
+                const res = await fetch(`/api/v1/hospital-manager/doctors/${id}/schedule`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    showToast('Doctor schedule updated successfully');
+                    document.getElementById('edit-schedule-modal').style.display = 'none';
+                    loadDoctors();
+                } else {
+                    alert('Failed to update schedule');
+                }
+            } catch(e) { console.error(e); }
+        }
 
         async function toggleDoc(id) {
             try {
                 await fetch(`/api/v1/hospital-manager/doctors/${id}/availability`, { method: 'POST' });
                 loadDoctors();
+                loadDashboardData();
             } catch(e) {}
         }
 
@@ -460,22 +664,6 @@
                 loadDoctors();
                 loadDashboardData();
             } catch(e) {}
-        }
-
-        async function editDocTime(id, currentTime) {
-            const newTime = prompt('Enter doctor available time (e.g. 10:00 AM - 2:00 PM):', currentTime);
-            if (newTime === null) return;
-            try {
-                const res = await fetch(`/api/v1/hospital-manager/doctors/${id}/schedule`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ availableTime: newTime, consultationFee: -1, dailyTokenLimit: -1 })
-                });
-                if (res.ok) {
-                    showToast('Available time updated');
-                    loadDoctors();
-                }
-            } catch(e) { console.error(e); }
         }
 
         let uploadedLogoBase64 = null;

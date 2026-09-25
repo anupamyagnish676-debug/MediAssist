@@ -55,8 +55,35 @@ public class HospitalManagerApiController {
                 .orElseThrow(() -> new IllegalStateException("Hospital not found"));
     }
 
-    public record AddDoctorRequest(String name, String department, String roomNumber, double consultationFee, int dailyTokenLimit, String availableTime) {}
-    public record UpdateScheduleRequest(String roomNumber, double consultationFee, int dailyTokenLimit, String availableTime) {}
+    public record AddDoctorRequest(
+            String name,
+            String department,
+            String qualification,
+            String roomNumber,
+            double consultationFee,
+            int dailyTokenLimit,
+            String availableDays,
+            String firstHalfTime,
+            String secondHalfTime,
+            int firstHalfLimit,
+            int secondHalfLimit,
+            int consultationDurationMinutes,
+            String availableTime
+    ) {}
+
+    public record UpdateScheduleRequest(
+            String roomNumber,
+            double consultationFee,
+            int dailyTokenLimit,
+            String qualification,
+            String availableDays,
+            String firstHalfTime,
+            String secondHalfTime,
+            int firstHalfLimit,
+            int secondHalfLimit,
+            int consultationDurationMinutes,
+            String availableTime
+    ) {}
     public record UpdateHospitalSettingsRequest(String name, String address, String phone, String brandColor, String logoUrl) {}
 
     /**
@@ -156,10 +183,22 @@ public class HospitalManagerApiController {
     @PostMapping("/doctors")
     public ResponseEntity<Doctor> addDoctor(@RequestBody AddDoctorRequest req) {
         Hospital h = getManagerHospital();
-        Doctor doc = new Doctor(req.name(), req.department(), h,
-                req.dailyTokenLimit() > 0 ? req.dailyTokenLimit() : 25, req.consultationFee());
+        int totalLimit = req.dailyTokenLimit();
+        if (totalLimit <= 0) {
+            totalLimit = (req.firstHalfLimit() > 0 ? req.firstHalfLimit() : 15) + (req.secondHalfLimit() > 0 ? req.secondHalfLimit() : 15);
+        }
+        Doctor doc = new Doctor(req.name(), req.department(), h, totalLimit, req.consultationFee());
         doc.setRoomNumber(req.roomNumber() != null ? req.roomNumber() : "101");
-        if (req.availableTime() != null && !req.availableTime().isBlank()) doc.setAvailableTime(req.availableTime());
+        if (req.qualification() != null && !req.qualification().isBlank()) doc.setQualification(req.qualification().trim());
+        if (req.availableDays() != null && !req.availableDays().isBlank()) doc.setAvailableDays(req.availableDays().trim());
+        if (req.firstHalfTime() != null && !req.firstHalfTime().isBlank()) doc.setFirstHalfTime(req.firstHalfTime().trim());
+        if (req.secondHalfTime() != null && !req.secondHalfTime().isBlank()) doc.setSecondHalfTime(req.secondHalfTime().trim());
+        if (req.firstHalfLimit() > 0) doc.setFirstHalfLimit(req.firstHalfLimit());
+        if (req.secondHalfLimit() > 0) doc.setSecondHalfLimit(req.secondHalfLimit());
+        if (req.consultationDurationMinutes() > 0) doc.setConsultationDurationMinutes(req.consultationDurationMinutes());
+        if (req.availableTime() != null && !req.availableTime().isBlank()) doc.setAvailableTime(req.availableTime().trim());
+        else doc.refreshCombinedAvailableTime();
+
         return ResponseEntity.ok(doctorRepository.save(doc));
     }
 
@@ -220,7 +259,15 @@ public class HospitalManagerApiController {
         if (req.roomNumber() != null && !req.roomNumber().isBlank()) doc.setRoomNumber(req.roomNumber());
         if (req.consultationFee() >= 0) doc.setConsultationFee(req.consultationFee());
         if (req.dailyTokenLimit() > 0) doc.setDailyTokenLimit(req.dailyTokenLimit());
-        if (req.availableTime() != null && !req.availableTime().isBlank()) doc.setAvailableTime(req.availableTime());
+        if (req.qualification() != null && !req.qualification().isBlank()) doc.setQualification(req.qualification().trim());
+        if (req.availableDays() != null && !req.availableDays().isBlank()) doc.setAvailableDays(req.availableDays().trim());
+        if (req.firstHalfTime() != null && !req.firstHalfTime().isBlank()) doc.setFirstHalfTime(req.firstHalfTime().trim());
+        if (req.secondHalfTime() != null && !req.secondHalfTime().isBlank()) doc.setSecondHalfTime(req.secondHalfTime().trim());
+        if (req.firstHalfLimit() > 0) doc.setFirstHalfLimit(req.firstHalfLimit());
+        if (req.secondHalfLimit() > 0) doc.setSecondHalfLimit(req.secondHalfLimit());
+        if (req.consultationDurationMinutes() > 0) doc.setConsultationDurationMinutes(req.consultationDurationMinutes());
+        if (req.availableTime() != null && !req.availableTime().isBlank()) doc.setAvailableTime(req.availableTime().trim());
+        else doc.refreshCombinedAvailableTime();
 
         doctorRepository.save(doc);
         return ResponseEntity.ok(doc);

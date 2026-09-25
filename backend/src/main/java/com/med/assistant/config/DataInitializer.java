@@ -317,6 +317,35 @@ public class DataInitializer {
                     }
                 }
 
+                // Ensure all doctors have shift details and available days populated
+                for (Doctor doc : doctorRepo.findAll()) {
+                    boolean changed = false;
+                    if (doc.getQualification() == null || doc.getQualification().isBlank()) {
+                        doc.setQualification("MBBS, MD");
+                        changed = true;
+                    }
+                    if (doc.getAvailableDays() == null || doc.getAvailableDays().isBlank()) {
+                        doc.setAvailableDays("MON,TUE,WED,THU,FRI,SAT");
+                        changed = true;
+                    }
+                    if (doc.getFirstHalfTime() == null || doc.getFirstHalfTime().isBlank()) {
+                        doc.setFirstHalfTime("09:00 AM - 01:00 PM");
+                        changed = true;
+                    }
+                    if (doc.getSecondHalfTime() == null || doc.getSecondHalfTime().isBlank()) {
+                        doc.setSecondHalfTime("05:00 PM - 09:00 PM");
+                        changed = true;
+                    }
+                    if (doc.getConsultationDurationMinutes() <= 0) {
+                        doc.setConsultationDurationMinutes(15);
+                        changed = true;
+                    }
+                    if (changed) {
+                        doc.refreshCombinedAvailableTime();
+                        doctorRepo.save(doc);
+                    }
+                }
+
                 logger.info("Demo database & accounts seeded successfully! Admin: admin@mediassist.com / Admin@123, KIMS: manager@kims.com / Manager@123");
             } catch (Exception ex) {
                 logger.warn("DataInitializer note: Database initialization or check skipped: {}", ex.getMessage());

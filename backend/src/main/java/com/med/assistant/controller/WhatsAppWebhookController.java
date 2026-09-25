@@ -58,6 +58,9 @@ public class WhatsAppWebhookController {
     private final Map<String, double[]> userLocation = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, Long> userPendingDoctorBooking = new java.util.concurrent.ConcurrentHashMap<>();
 
+    public record PendingTimeBooking(Long doctorId, LocalDate chosenDate) {}
+    private final Map<String, PendingTimeBooking> userPendingTimeBooking = new java.util.concurrent.ConcurrentHashMap<>();
+
     public WhatsAppWebhookController(WhatsAppClientService whatsAppClient,
                                      LocationService locationService,
                                      GeminiAiService geminiAiService,
@@ -284,16 +287,31 @@ public class WhatsAppWebhookController {
                 Long doctorId = userPendingDoctorBooking.get(fromPhone);
                 Doctor doc = doctorRepository.findById(doctorId).orElse(null);
                 if (doc != null) {
+                    if (!doc.isAvailableOnDay(targetDate.getDayOfWeek())) {
+                        String days = (doc.getAvailableDays() != null && !doc.getAvailableDays().isBlank())
+                                ? doc.getAvailableDays() : "Mon-Sat";
+                        whatsAppClient.sendTextMessage(fromPhone, "ℹ️ *" + doc.getName() + " does not practice on " 
+                                + targetDate.getDayOfWeek().name() + "s.*\n\nRegular OPD Working Days: *" + days 
+                                + "*\n\nPlease select another date!");
+                        return;
+                    }
                     int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, targetDate);
                     int limit = doc.getDailyTokenLimit();
                     if (booked >= limit) {
                         promptSlotsFullAndShowAlternatives(fromPhone, doc, targetDate);
                     } else {
-                        bookAppointmentForDoctorAndDate(fromPhone, doctorId, targetDate);
+                        promptShiftOrTimeSelection(fromPhone, doc, targetDate);
                     }
                     return;
                 }
             }
+        }
+
+        // 2a-3. Check if patient is responding with a preferred time or shift for pending booking
+        if (userPendingTimeBooking.containsKey(fromPhone)) {
+            PendingTimeBooking pending = userPendingTimeBooking.get(fromPhone);
+            bookAppointmentWithPreferredTime(fromPhone, pending.doctorId(), pending.chosenDate(), body.trim());
+            return;
         }
 
         // 2b. Direct Hospital Discovery & Maps requests from text
@@ -476,6 +494,10 @@ public class WhatsAppWebhookController {
                 }
             } else if (selectedId != null && selectedId.startsWith("DOC_RATE_")) {
                 handleDoctorRatingSubmission(fromPhone, selectedId);
+            } else if (selectedId != null && selectedId.startsWith("OFFDUTY_")) {
+                whatsAppClient.sendTextMessage(fromPhone, "ℹ️ The doctor is off-duty on this day. Please select another date from the list above.");
+            } else if (selectedId != null && selectedId.startsWith("SHIFT_")) {
+                handleShiftSelection(fromPhone, selectedId);
             } else if (selectedId != null && selectedId.startsWith("APPTDATE_")) {
                 handleAppointmentDateSelection(fromPhone, selectedId);
             } else if (selectedId != null && selectedId.startsWith("DOC_")) {
@@ -502,6 +524,10 @@ public class WhatsAppWebhookController {
 
             if (buttonId.startsWith("DOC_RATE_")) {
                 handleDoctorRatingSubmission(fromPhone, buttonId);
+            } else if (buttonId.startsWith("OFFDUTY_")) {
+                whatsAppClient.sendTextMessage(fromPhone, "ℹ️ The doctor is off-duty on this day. Please select another date from the list above.");
+            } else if (buttonId.startsWith("SHIFT_")) {
+                handleShiftSelection(fromPhone, buttonId);
             } else if (buttonId.startsWith("APPTDATE_")) {
                 handleAppointmentDateSelection(fromPhone, buttonId);
             } else if (buttonId.startsWith("DOC_")) {
@@ -659,6 +685,7 @@ public class WhatsAppWebhookController {
         // Offer next 6 days with live slot availability count
         for (int i = 0; i < 6; i++) {
             LocalDate d = today.plusDays(i);
+            boolean isDoctorWorking = doc.isAvailableOnDay(d.getDayOfWeek());
             int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, d);
             int limit = doc.getDailyTokenLimit();
             int remaining = Math.max(0, limit - booked);
@@ -674,15 +701,21 @@ public class WhatsAppWebhookController {
             if (title.length() > 24) title = title.substring(0, 24);
 
             String desc;
-            if (remaining > 0) {
+            String rowId;
+            if (!isDoctorWorking) {
+                desc = "🔴 Off-Duty (Day Off)";
+                rowId = "OFFDUTY_" + doctorId + "_" + d.toString();
+            } else if (remaining > 0) {
                 desc = "🟢 " + remaining + " tokens left (Next: #" + String.format("%02d", booked + 1) + ")";
+                rowId = "APPTDATE_" + doctorId + "_" + d.toString();
             } else {
                 desc = "🔴 FULL (0 tokens available)";
+                rowId = "APPTDATE_" + doctorId + "_" + d.toString();
             }
             if (desc.length() > 72) desc = desc.substring(0, 72);
 
             dateRows.add(Map.of(
-                    "id", "APPTDATE_" + doctorId + "_" + d.toString(),
+                    "id", rowId,
                     "title", title,
                     "description", desc
             ));
@@ -696,7 +729,7 @@ public class WhatsAppWebhookController {
                 "⏰ *Hours:* %s\n\n" +
                 "Please choose your preferred date below:",
                 doc.getName(),
-                doc.getDepartment(),
+                doc.getQualification() != null ? doc.getQualification() : doc.getDepartment(),
                 doc.getRating(),
                 doc.getTotalReviews(),
                 doc.getRoomNumber() != null ? doc.getRoomNumber() : "-",
@@ -729,20 +762,85 @@ public class WhatsAppWebhookController {
                 return;
             }
 
+            if (!doctor.isAvailableOnDay(chosenDate.getDayOfWeek())) {
+                String days = (doctor.getAvailableDays() != null && !doctor.getAvailableDays().isBlank())
+                        ? doctor.getAvailableDays() : "Mon-Sat";
+                whatsAppClient.sendTextMessage(fromPhone, "ℹ️ *" + doctor.getName() + " does not practice on " 
+                        + chosenDate.getDayOfWeek().name() + "s.*\n\nRegular OPD Working Days: *" + days 
+                        + "*\n\nPlease select another date from the list above!");
+                return;
+            }
+
             int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, chosenDate);
             int limit = doctor.getDailyTokenLimit();
 
             if (booked >= limit) {
-                // Slots are full! Inform user and prompt alternate dates
                 promptSlotsFullAndShowAlternatives(fromPhone, doctor, chosenDate);
                 return;
             }
 
-            // Slots are available! Book for chosen date
-            bookAppointmentForDoctorAndDate(fromPhone, doctorId, chosenDate);
+            // Prompt for shift / preferred time
+            promptShiftOrTimeSelection(fromPhone, doctor, chosenDate);
         } catch (Exception e) {
             logger.error("Error handling appointment date selection: {}", e.getMessage(), e);
             whatsAppClient.sendTextMessage(fromPhone, "Sorry, there was an issue processing your appointment date. Please try again.");
+        }
+    }
+
+    private void promptShiftOrTimeSelection(String fromPhone, Doctor doc, LocalDate chosenDate) {
+        userPendingDoctorBooking.remove(fromPhone);
+        userPendingTimeBooking.put(fromPhone, new PendingTimeBooking(doc.getId(), chosenDate));
+
+        String dateStr = chosenDate.format(DateTimeFormatter.ofPattern("EEEE, d MMM yyyy"));
+        String shift1 = (doc.getFirstHalfTime() != null && !doc.getFirstHalfTime().isBlank()) ? doc.getFirstHalfTime() : "09:00 AM - 01:00 PM";
+        String shift2 = (doc.getSecondHalfTime() != null && !doc.getSecondHalfTime().isBlank()) ? doc.getSecondHalfTime() : "05:00 PM - 09:00 PM";
+
+        String msg = String.format(
+                "⏰ *Select Consultation Shift or Preferred Time*\n\n" +
+                "👨‍⚕️ *Doctor:* %s (%s)\n" +
+                "📅 *Date:* %s\n" +
+                "🚪 *Room:* %s | ⏱️ *Slot Duration:* ~%d mins\n\n" +
+                "🌅 *1st Half (Morning):* %s\n" +
+                "🌆 *2nd Half (Evening):* %s\n\n" +
+                "👉 *Tap a shift below, OR reply directly with your preferred time* (e.g. \"10:30 AM\", \"11:00\", \"6:00 PM\").\n" +
+                "_We will map you to the exact or nearest best available time slot!_",
+                doc.getName(),
+                doc.getQualification() != null ? doc.getQualification() : doc.getDepartment(),
+                dateStr,
+                doc.getRoomNumber() != null ? doc.getRoomNumber() : "101",
+                doc.getConsultationDurationMinutes(),
+                shift1,
+                shift2
+        );
+
+        String idPrefixM = "SHIFT_M_" + doc.getId() + "_" + chosenDate;
+        String idPrefixE = "SHIFT_E_" + doc.getId() + "_" + chosenDate;
+
+        whatsAppClient.sendInteractiveButtons(
+                fromPhone,
+                msg,
+                List.of(
+                        new WhatsAppClientService.ButtonOption(idPrefixM, "🌅 Morning Shift"),
+                        new WhatsAppClientService.ButtonOption(idPrefixE, "🌆 Evening Shift")
+                )
+        );
+    }
+
+    private void handleShiftSelection(String fromPhone, String payload) {
+        try {
+            boolean isMorning = payload.startsWith("SHIFT_M_");
+            String data = payload.replace(isMorning ? "SHIFT_M_" : "SHIFT_E_", "");
+            int splitIdx = data.indexOf("_");
+            if (splitIdx < 0) return;
+
+            Long doctorId = Long.parseLong(data.substring(0, splitIdx));
+            String dateStr = data.substring(splitIdx + 1);
+            LocalDate chosenDate = LocalDate.parse(dateStr);
+
+            bookAppointmentWithPreferredTime(fromPhone, doctorId, chosenDate, isMorning ? "MORNING" : "EVENING");
+        } catch (Exception e) {
+            logger.error("Error in handleShiftSelection: {}", e.getMessage(), e);
+            whatsAppClient.sendTextMessage(fromPhone, "Sorry, there was an issue selecting your shift. Please try again.");
         }
     }
 
@@ -752,7 +850,9 @@ public class WhatsAppWebhookController {
 
         for (int i = 0; i < 7; i++) {
             LocalDate d = today.plusDays(i);
-            if (d.equals(fullDate)) continue; // skip the full date
+            if (d.equals(fullDate)) continue;
+
+            if (!doc.isAvailableOnDay(d.getDayOfWeek())) continue;
 
             int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doc.getId(), d);
             int remaining = Math.max(0, doc.getDailyTokenLimit() - booked);
@@ -805,18 +905,28 @@ public class WhatsAppWebhookController {
     }
 
     private void bookAppointmentForDoctor(String fromPhone, Long doctorId) {
-        bookAppointmentForDoctorAndDate(fromPhone, doctorId, LocalDate.now());
+        bookAppointmentWithPreferredTime(fromPhone, doctorId, LocalDate.now(), "DEFAULT");
     }
 
     private void bookAppointmentForDoctorAndDate(String fromPhone, Long doctorId, LocalDate appointmentDate) {
+        bookAppointmentWithPreferredTime(fromPhone, doctorId, appointmentDate, "DEFAULT");
+    }
+
+    private void bookAppointmentWithPreferredTime(String fromPhone, Long doctorId, LocalDate appointmentDate, String userTimeOrShift) {
         Doctor doctor = doctorRepository.findById(doctorId).orElseThrow();
         Hospital hospital = doctor.getHospital();
 
-        int todayBookings = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, appointmentDate);
-        int nextTokenNumber = todayBookings + 1;
+        List<Appointment> bookedAppts = appointmentRepository.findByDoctorIdAndAppointmentDateOrderBySerialNumberAsc(doctorId, appointmentDate);
+        OpdScheduleService.SlotMatchResult match = opdScheduleService.findNearestAvailableSlot(doctor, appointmentDate, bookedAppts, userTimeOrShift);
 
-        OpdScheduleService.TentativeSlot slot = opdScheduleService.calculateTentativeWindow(doctor, nextTokenNumber);
-        String timeSlotDescription = slot.timeWindow();
+        if (match == null) {
+            promptSlotsFullAndShowAlternatives(fromPhone, doctor, appointmentDate);
+            return;
+        }
+
+        OpdScheduleService.DoctorSlot slot = match.slot();
+        int tokenNumber = slot.slotNumber();
+        String timeSlotDescription = slot.timeWindow() + " (" + slot.shiftName() + ")";
 
         // Generate clean random 6-digit PIN (e.g. 849201)
         String qrToken;
@@ -825,12 +935,13 @@ public class WhatsAppWebhookController {
         } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
 
         Appointment appointment = new Appointment(hospital, doctor, fromPhone, "Patient",
-                appointmentDate, timeSlotDescription, nextTokenNumber, qrToken);
+                appointmentDate, timeSlotDescription, tokenNumber, qrToken);
 
         appointment = appointmentRepository.save(appointment);
 
-        // Clear any pending date booking state for this user
+        // Clear any pending date/time booking states
         userPendingDoctorBooking.remove(fromPhone);
+        userPendingTimeBooking.remove(fromPhone);
 
         // Generate Branded PDF Slip with Dual QR Codes (in-memory)
         try {
@@ -841,48 +952,44 @@ public class WhatsAppWebhookController {
 
         String pdfUrl = "https://mediassist-1hdl.onrender.com/api/v1/appointments/" + appointment.getId() + "/pdf";
         String dateFormatted = appointmentDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"));
-        boolean isToday = appointmentDate.equals(LocalDate.now());
 
-        // Send Confirmation Text with Session PIN & Chosen Appointment Date
-        String confirmation = """
+        String noticeBlock = (match.noticeMessage() != null && !match.noticeMessage().isBlank())
+                ? "\n" + match.noticeMessage() + "\n" : "";
+
+        String confirmation = String.format("""
             🎉 *OPD Consultation Confirmed!*
             
             🏥 *Hospital:* %s
             👨‍⚕️ *Doctor:* %s (%s)
-            ⭐ *Doctor Rating:* ⭐ %.1f/5.0 (%d reviews)
-            🚪 *Room:* %s
-            📅 *Appointment Date:* %s%s
+            🎯 *Department:* %s
+            🚪 *OPD Room:* %s
+            📅 *Date:* %s
             
-            👉 *YOUR QUEUE TOKEN: #%02d*
-            ⏰ *Tentative Window:* %s
-            🚪 *Recommended Reporting Time:* %s (15 min prior)
-            🔑 *Session PIN:* %s
+            🎫 *Your Token Number:* #%02d
+            ⏰ *Tentative Time:* %s
+            🚪 *Reporting Time:* %s (Please arrive 15 mins early)
+            %s
+            🔐 *Check-in PIN:* `%s`
+            💵 *Consultation Fee:* ₹%d
             
-            📥 *Download OP Case Sheet Slip (PDF):*
+            📄 *Download A4 OP Case Sheet Slip:*
             %s
             
-            💡 *Doctor Consultation Session:*
-            Your A4 OP slip contains two QR codes:
-            • 🟢 *START QR* (scanned upon entering doctor chamber)
-            • 🔴 *END QR* (scanned upon finishing consultation)
-            You can also show your 6-digit Session PIN *%s* at the desk.
-            
-            Type *"queue status"* or *"my token"* anytime to track your live turn!
-            """.formatted(
+            _💡 Note: When you arrive, receptionist or doctor will scan the START QR code on your slip to begin consultation._
+            """,
                 hospital.getName(),
                 doctor.getName(),
+                doctor.getQualification() != null ? doctor.getQualification() : doctor.getDepartment(),
                 doctor.getDepartment(),
-                doctor.getRating(),
-                doctor.getTotalReviews(),
-                doctor.getRoomNumber() != null ? doctor.getRoomNumber() : "OPD Desk",
+                doctor.getRoomNumber() != null ? doctor.getRoomNumber() : "101",
                 dateFormatted,
-                isToday ? " (Today)" : "",
-                nextTokenNumber,
-                slot.timeWindow(),
+                tokenNumber,
+                slot.timeWindow() + " (" + slot.shiftName() + ")",
                 slot.reportingTime(),
+                noticeBlock,
                 qrToken,
-                pdfUrl,
-                qrToken
+                (int) doctor.getConsultationFee(),
+                pdfUrl
         );
 
         whatsAppClient.sendTextMessage(fromPhone, confirmation);
@@ -892,8 +999,8 @@ public class WhatsAppWebhookController {
             whatsAppClient.sendDocumentMessage(
                     fromPhone,
                     pdfUrl,
-                    "📄 Official OP Case Sheet (Token #" + String.format("%02d", nextTokenNumber) + " - " + appointmentDate.format(DateTimeFormatter.ofPattern("d MMM")) + ")",
-                    "Appointment_Slip_Token_" + nextTokenNumber + ".pdf"
+                    "📄 Official OP Case Sheet (Token #" + String.format("%02d", tokenNumber) + " - " + appointmentDate.format(DateTimeFormatter.ofPattern("d MMM")) + ")",
+                    "Appointment_Slip_Token_" + tokenNumber + ".pdf"
             );
         } catch (Exception e) {
             logger.warn("Failed to dispatch PDF document attachment: {}", e.getMessage());
