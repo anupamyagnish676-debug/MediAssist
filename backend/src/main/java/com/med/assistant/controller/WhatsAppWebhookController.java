@@ -205,6 +205,12 @@ public class WhatsAppWebhookController {
         if (body == null) return;
         String lower = body.toLowerCase().trim();
 
+        // 0. Greeting / First Interaction check (e.g. "hi", "hello", "hey", "start", "namaste", "help", "menu")
+        if (isGreeting(lower)) {
+            sendCustomWelcomeMessage(fromPhone);
+            return;
+        }
+
         // 1. Emergency red-flag check
         if (geminiAiService.isEmergency(body)) {
             whatsAppClient.sendTextMessage(fromPhone, geminiAiService.getEmergencyResponse());
@@ -255,41 +261,7 @@ public class WhatsAppWebhookController {
             if (lower.contains("my reminder") || lower.contains("show reminder") || lower.contains("list reminder") 
                     || lower.contains("check reminder") || lower.equals("alarm") || lower.equals("alarms") 
                     || lower.contains("my alarms") || lower.contains("show alarm") || lower.contains("list alarm") || lower.contains("schedule")) {
-                var reminders = reminderService.getActiveReminders(fromPhone);
-                if (reminders.isEmpty()) {
-                    whatsAppClient.sendTextMessage(fromPhone, "📋 You have no active medication alarms.\n\nTo schedule one, message me:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
-                } else {
-                    // Group reminders by scheduled time node (HH:mm)
-                    Map<String, List<com.med.assistant.model.MedicationReminder>> nodes = reminders.stream()
-                            .collect(java.util.stream.Collectors.groupingBy(
-                                    r -> r.getReminderTime() != null ? r.getReminderTime() : "Unscheduled",
-                                    java.util.TreeMap::new,
-                                    java.util.stream.Collectors.toList()
-                            ));
-
-                    StringBuilder sb = new StringBuilder("⏰ *Your Medication Alarm Nodes & Schedule:*\n\n");
-                    for (Map.Entry<String, List<com.med.assistant.model.MedicationReminder>> entry : nodes.entrySet()) {
-                        String timeNode = entry.getKey();
-                        List<com.med.assistant.model.MedicationReminder> meds = entry.getValue();
-
-                        sb.append("🕒 *Time Node: ").append(timeNode).append(" IST* (")
-                          .append(meds.size()).append(meds.size() == 1 ? " medicine" : " medicines").append(")\n");
-
-                        for (com.med.assistant.model.MedicationReminder r : meds) {
-                            String dosage = (r.getDosageInstruction() != null && !r.getDosageInstruction().isBlank())
-                                    ? " — " + r.getDosageInstruction() : "";
-                            String statusIcon = r.getStatus() == com.med.assistant.model.MedicationReminder.AdherenceStatus.TAKEN ? "✅ Taken"
-                                    : (r.getStatus() == com.med.assistant.model.MedicationReminder.AdherenceStatus.SNOOZED ? "⏰ Snoozed" : "⏳ Active");
-                            sb.append("  • 💊 *").append(r.getMedicineName()).append("*").append(dosage)
-                              .append(" [").append(statusIcon).append("]\n");
-                        }
-                        sb.append("\n");
-                    }
-                    sb.append("🔔 *How Alarms Work:*\n");
-                    sb.append("At each time node, you will receive an alert with *[✅ Taken]*, *[⏰ Snooze 15m]*, and *[⏰ Snooze 30m]* buttons!\n\n");
-                    sb.append("💡 *To cancel all alarms*, simply message: *\"Cancel all alarms\"* or *\"Stop alarms\"*");
-                    whatsAppClient.sendTextMessage(fromPhone, sb.toString());
-                }
+                showMyAlarms(fromPhone);
                 return;
             }
 
@@ -436,6 +408,9 @@ public class WhatsAppWebhookController {
                 return;
             } else if ("DISCOVER_MAPS".equals(buttonId)) {
                 handleDiscoverGoogleMaps(fromPhone);
+                return;
+            } else if ("MY_ALARMS".equals(buttonId)) {
+                showMyAlarms(fromPhone);
                 return;
             }
 
@@ -925,6 +900,77 @@ public class WhatsAppWebhookController {
             return String.format("%02d:%02d", hours, mins);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    private boolean isGreeting(String text) {
+        if (text == null) return false;
+        String t = text.trim().toLowerCase();
+        return t.equals("hi") || t.equals("hello") || t.equals("hey") || t.equals("start")
+                || t.equals("namaste") || t.equals("namaskar") || t.equals("help") || t.equals("menu")
+                || t.equals("hola") || t.equals("good morning") || t.equals("good afternoon")
+                || t.equals("good evening") || t.equals("restart") || t.equals("info");
+    }
+
+    private void sendCustomWelcomeMessage(String fromPhone) {
+        String welcome = """
+            👋 *Welcome to MediAssist!* 🩺
+            _Your 24/7 Smart Healthcare & OPD Assistant_
+
+            I am here to assist you with fast healthcare services:
+            • 🩺 *Clinical Guidance:* Type your symptoms anytime.
+            • 🏥 *Nearby Hospitals:* Tap below or send your location.
+            • 🎫 *Instant OPD Token:* Book queue appointments with QR slips.
+            • 💊 *Medication Alarms:* Send prescription photos or set reminders.
+            • 📁 *Report Wardrobe:* Send lab reports/PDFs for automated summaries.
+
+            👉 *Tap a quick option below, share your location, or type how you are feeling:*
+            """;
+
+        List<WhatsAppClientService.ButtonOption> buttons = List.of(
+                new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ Nearby Hospitals"),
+                new WhatsAppClientService.ButtonOption("DISCOVER_INSTANT", "⚡ Instant OPD Token"),
+                new WhatsAppClientService.ButtonOption("MY_ALARMS", "💊 My Alarms")
+        );
+
+        whatsAppClient.sendInteractiveButtons(fromPhone, welcome, buttons);
+    }
+
+    private void showMyAlarms(String fromPhone) {
+        var reminders = reminderService.getActiveReminders(fromPhone);
+        if (reminders.isEmpty()) {
+            whatsAppClient.sendTextMessage(fromPhone, "📋 You have no active medication alarms.\n\nTo schedule one, message me:\n👉 *'Remind me to take Paracetamol at 8:00 PM'*");
+        } else {
+            // Group reminders by scheduled time node (HH:mm)
+            Map<String, List<com.med.assistant.model.MedicationReminder>> nodes = reminders.stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            r -> r.getReminderTime() != null ? r.getReminderTime() : "Unscheduled",
+                            java.util.TreeMap::new,
+                            java.util.stream.Collectors.toList()
+                    ));
+
+            StringBuilder sb = new StringBuilder("⏰ *Your Medication Alarm Nodes & Schedule:*\n\n");
+            for (Map.Entry<String, List<com.med.assistant.model.MedicationReminder>> entry : nodes.entrySet()) {
+                String timeNode = entry.getKey();
+                List<com.med.assistant.model.MedicationReminder> meds = entry.getValue();
+
+                sb.append("🕒 *Time Node: ").append(timeNode).append(" IST* (")
+                  .append(meds.size()).append(meds.size() == 1 ? " medicine" : " medicines").append(")\n");
+
+                for (com.med.assistant.model.MedicationReminder r : meds) {
+                    String dosage = (r.getDosageInstruction() != null && !r.getDosageInstruction().isBlank())
+                            ? " — " + r.getDosageInstruction() : "";
+                    String statusIcon = r.getStatus() == com.med.assistant.model.MedicationReminder.AdherenceStatus.TAKEN ? "✅ Taken"
+                            : (r.getStatus() == com.med.assistant.model.MedicationReminder.AdherenceStatus.SNOOZED ? "⏰ Snoozed" : "⏳ Active");
+                    sb.append("  • 💊 *").append(r.getMedicineName()).append("*").append(dosage)
+                      .append(" [").append(statusIcon).append("]\n");
+                }
+                sb.append("\n");
+            }
+            sb.append("🔔 *How Alarms Work:*\n");
+            sb.append("At each time node, you will receive an alert with *[✅ Taken]*, *[⏰ Snooze 15m]*, and *[⏰ Snooze 30m]* buttons!\n\n");
+            sb.append("💡 *To cancel all alarms*, simply message: *\"Cancel all alarms\"* or *\"Stop alarms\"*");
+            whatsAppClient.sendTextMessage(fromPhone, sb.toString());
         }
     }
 }
