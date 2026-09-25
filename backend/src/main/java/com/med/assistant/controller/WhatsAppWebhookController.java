@@ -905,11 +905,8 @@ public class WhatsAppWebhookController {
 
     private boolean isGreeting(String text) {
         if (text == null) return false;
-        String t = text.trim().toLowerCase();
-        return t.equals("hi") || t.equals("hello") || t.equals("hey") || t.equals("start")
-                || t.equals("namaste") || t.equals("namaskar") || t.equals("help") || t.equals("menu")
-                || t.equals("hola") || t.equals("good morning") || t.equals("good afternoon")
-                || t.equals("good evening") || t.equals("restart") || t.equals("info");
+        String t = text.trim().toLowerCase().replaceAll("[^a-z\\s]", "");
+        return t.matches("^(hi+|hey+|hello+|namaste|namaskar|hola|start|help|menu|good\\s*(morning|afternoon|evening)|restart|info)(\\s+.*)?$");
     }
 
     private void sendCustomWelcomeMessage(String fromPhone) {
