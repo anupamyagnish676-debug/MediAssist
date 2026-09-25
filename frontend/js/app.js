@@ -30,8 +30,9 @@ const App = {
     },
 
     // Receptionist Check-in by QR code token
-    async checkInPatient(qrToken) {
-        const res = await fetch(`${API_BASE}/appointments/check-in?token=${encodeURIComponent(qrToken)}`, {
+    async checkInPatient(qrToken, hospitalId = null) {
+        const hospQuery = hospitalId ? `&hospitalId=${hospitalId}` : '';
+        const res = await fetch(`${API_BASE}/appointments/check-in?token=${encodeURIComponent(qrToken)}${hospQuery}`, {
             method: 'POST'
         });
         return await res.json();

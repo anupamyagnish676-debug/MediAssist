@@ -17,13 +17,16 @@ public class AppointmentApiController {
     private final AppointmentRepository appointmentRepository;
     private final com.med.assistant.service.AppointmentSlipPdfService pdfService;
     private final com.med.assistant.service.WhatsAppClientService whatsAppClient;
+    private final com.med.assistant.repository.UserRepository userRepository;
 
     public AppointmentApiController(AppointmentRepository appointmentRepository,
                                     com.med.assistant.service.AppointmentSlipPdfService pdfService,
-                                    com.med.assistant.service.WhatsAppClientService whatsAppClient) {
+                                    com.med.assistant.service.WhatsAppClientService whatsAppClient,
+                                    com.med.assistant.repository.UserRepository userRepository) {
         this.appointmentRepository = appointmentRepository;
         this.pdfService = pdfService;
         this.whatsAppClient = whatsAppClient;
+        this.userRepository = userRepository;
     }
 
     private String cleanToken(String rawToken) {
@@ -35,10 +38,48 @@ public class AppointmentApiController {
     }
 
     /**
+     * Validates that the appointment belongs to the hospital attempting to process it.
+     * Prevents cross-hospital scanning, unauthorized check-ins, or consultation manipulations.
+     */
+    private String validateHospitalAccess(Appointment appt, Long targetHospitalId) {
+        if (appt == null || appt.getHospital() == null) return null;
+        Long apptHospitalId = appt.getHospital().getId();
+
+        // 1. Explicit hospitalId passed from client (e.g. manager-portal or receptionist)
+        if (targetHospitalId != null && !targetHospitalId.equals(apptHospitalId)) {
+            String apptHospName = appt.getHospital().getName();
+            return String.format("Cross-Hospital Error: This appointment slip belongs to \"%s\". It cannot be scanned, checked in, or processed at this hospital.", apptHospName);
+        }
+
+        // 2. Check authenticated manager if present in Spring Security Context
+        try {
+            org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !auth.getName().equals("anonymousUser") && userRepository != null) {
+                Optional<com.med.assistant.model.User> uOpt = userRepository.findByEmailIgnoreCase(auth.getName());
+                if (uOpt.isPresent()) {
+                    com.med.assistant.model.User user = uOpt.get();
+                    if (user.getRole() == com.med.assistant.model.User.Role.HOSPITAL_MANAGER && user.getHospital() != null) {
+                        Long managerHospId = user.getHospital().getId();
+                        if (!managerHospId.equals(apptHospitalId)) {
+                            String apptHospName = appt.getHospital().getName();
+                            String managerHospName = user.getHospital().getName();
+                            return String.format("Unauthorized: This appointment belongs to \"%s\". You are currently logged in under \"%s\". Action blocked.", apptHospName, managerHospName);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        return null;
+    }
+
+    /**
      * Receptionist Check-In via QR Code Scanner or Manual PIN.
      */
     @PostMapping("/check-in")
-    public ResponseEntity<Map<String, Object>> checkInWithQrCode(@RequestParam String token) {
+    public ResponseEntity<Map<String, Object>> checkInWithQrCode(
+            @RequestParam String token,
+            @RequestParam(required = false) Long hospitalId) {
         String clean = cleanToken(token);
 
         Optional<Appointment> opt = appointmentRepository.findByQrCodeToken(clean);
@@ -50,6 +91,15 @@ public class AppointmentApiController {
         }
 
         Appointment appt = opt.get();
+
+        String validationError = validateHospitalAccess(appt, hospitalId);
+        if (validationError != null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "message", validationError
+            ));
+        }
+
         if (appt.getStatus() == Appointment.Status.CONFIRMED) {
             appt.setStatus(Appointment.Status.CHECKED_IN);
             appointmentRepository.save(appt);
@@ -76,7 +126,9 @@ public class AppointmentApiController {
      * Automatically alerts the NEXT waiting patient on WhatsApp that doctor is currently engaged.
      */
     @PostMapping("/start-consultation")
-    public ResponseEntity<Map<String, Object>> startConsultation(@RequestParam String token) {
+    public ResponseEntity<Map<String, Object>> startConsultation(
+            @RequestParam String token,
+            @RequestParam(required = false) Long hospitalId) {
         String clean = cleanToken(token);
         Optional<Appointment> opt = appointmentRepository.findByQrCodeToken(clean);
         if (opt.isEmpty()) {
@@ -87,6 +139,15 @@ public class AppointmentApiController {
         }
 
         Appointment appt = opt.get();
+
+        String validationError = validateHospitalAccess(appt, hospitalId);
+        if (validationError != null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "message", validationError
+            ));
+        }
+
         appt.setStatus(Appointment.Status.IN_CONSULTATION);
         appt.setConsultationStartTime(java.time.LocalDateTime.now());
         appointmentRepository.save(appt);
@@ -138,7 +199,9 @@ public class AppointmentApiController {
      * 2. Prompts CURRENT patient with WhatsApp 5-Star Rating & Review!
      */
     @PostMapping("/end-consultation")
-    public ResponseEntity<Map<String, Object>> endConsultation(@RequestParam String token) {
+    public ResponseEntity<Map<String, Object>> endConsultation(
+            @RequestParam String token,
+            @RequestParam(required = false) Long hospitalId) {
         String clean = cleanToken(token);
         Optional<Appointment> opt = appointmentRepository.findByQrCodeToken(clean);
         if (opt.isEmpty()) {
@@ -149,6 +212,15 @@ public class AppointmentApiController {
         }
 
         Appointment appt = opt.get();
+
+        String validationError = validateHospitalAccess(appt, hospitalId);
+        if (validationError != null) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "message", validationError
+            ));
+        }
+
         appt.setStatus(Appointment.Status.COMPLETED);
         appt.setConsultationEndTime(java.time.LocalDateTime.now());
         appointmentRepository.save(appt);

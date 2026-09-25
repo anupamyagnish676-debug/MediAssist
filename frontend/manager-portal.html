@@ -774,9 +774,10 @@
 
             // Clean token (QR encodes "APPT:XXXXXX")
             const cleanToken = tokenString.replace('APPT:', '').trim();
+            const hospParam = (myHospital && myHospital.id) ? '&hospitalId=' + myHospital.id : '';
 
             try {
-                const res = await fetch('/api/v1/appointments/check-in?token=' + encodeURIComponent(cleanToken), {
+                const res = await fetch('/api/v1/appointments/check-in?token=' + encodeURIComponent(cleanToken) + hospParam, {
                     method: 'POST'
                 });
                 const data = await res.json();
@@ -816,16 +817,17 @@
                     showToast('Patient checked in successfully!');
                 } else {
                     resultDiv.innerHTML = `
-                        <div style="text-align: center; color: #ef4444;">
-                            <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">❌</div>
-                            <h3>Check-In Failed</h3>
-                            <p style="font-size: 0.875rem;">${data.message || 'Invalid QR code or token.'}</p>
+                        <div style="text-align: center; color: #ef4444; padding: 1.5rem; background: #fef2f2; border: 2px dashed #f87171; border-radius: 12px;">
+                            <div style="font-size: 3rem; margin-bottom: 0.5rem;">🚫</div>
+                            <h3 style="color: #991b1b; font-weight: bold; margin-bottom: 0.5rem;">Cross-Hospital Scan Blocked</h3>
+                            <p style="font-size: 0.95rem; color: #b91c1c; line-height: 1.4;">${data.message || 'Invalid QR code or token.'}</p>
                         </div>
                     `;
+                    showToast('Cross-hospital scan blocked!');
                 }
             } catch (err) {
                 resultDiv.innerHTML = `
-                    <div style="text-align: center; color: #ef4444;">
+                    <div style="text-align: center; color: #ef4444; padding: 1.5rem; background: #fef2f2; border: 2px dashed #f87171; border-radius: 12px;">
                         <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">❌</div>
                         <h3>Connection Error</h3>
                         <p style="font-size: 0.875rem;">Could not connect to the check-in server.</p>
@@ -838,7 +840,8 @@
 
         async function startConsultation(token) {
             try {
-                const res = await fetch('/api/v1/appointments/start-consultation?token=' + encodeURIComponent(token), { method: 'POST' });
+                const hospParam = (myHospital && myHospital.id) ? '&hospitalId=' + myHospital.id : '';
+                const res = await fetch('/api/v1/appointments/start-consultation?token=' + encodeURIComponent(token) + hospParam, { method: 'POST' });
                 const d = await res.json();
                 if (d.success) {
                     showToast('🟢 Consultation Started! Waiting patient notified on WhatsApp.');
@@ -858,7 +861,8 @@
 
         async function endConsultation(token) {
             try {
-                const res = await fetch('/api/v1/appointments/end-consultation?token=' + encodeURIComponent(token), { method: 'POST' });
+                const hospParam = (myHospital && myHospital.id) ? '&hospitalId=' + myHospital.id : '';
+                const res = await fetch('/api/v1/appointments/end-consultation?token=' + encodeURIComponent(token) + hospParam, { method: 'POST' });
                 const d = await res.json();
                 if (d.success) {
                     showToast('🔴 Consultation Completed! Next patient called and rating request sent.');
