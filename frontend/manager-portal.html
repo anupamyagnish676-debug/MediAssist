@@ -137,7 +137,7 @@
                 <div class="card">
                     <div class="card-header">
                         <h2>Manage Doctors</h2>
-                        <button class="btn btn-blue" onclick="document.getElementById('add-doctor-form').style.display='block'">+ Add Doctor</button>
+                        <button class="btn btn-blue" onclick="showAddDoctorForm()">+ Add Doctor</button>
                     </div>
                     
                     <form id="add-doctor-form">
@@ -149,7 +149,10 @@
                             </div>
                             <div class="form-group">
                                 <label>Department / Specialty *</label>
-                                <input type="text" id="doc-dept" placeholder="e.g. Cardiology" required>
+                                <select id="doc-dept" required onchange="handleDeptChange(this.value)">
+                                    <option value="" disabled selected>-- Select Registered Department --</option>
+                                </select>
+                                <input type="text" id="doc-dept-custom" placeholder="Type custom department name..." style="display:none; margin-top: 0.5rem;">
                             </div>
                             <div class="form-group">
                                 <label>Qualification / Degree</label>
@@ -203,7 +206,7 @@
                         </div>
                         <div class="flex-actions" style="margin-top: 1rem;">
                             <button type="submit" class="btn btn-blue">Save Doctor</button>
-                            <button type="button" class="btn btn-gray" onclick="document.getElementById('add-doctor-form').style.display='none'">Cancel</button>
+                            <button type="button" class="btn btn-gray" onclick="cancelAddDoctor()">Cancel</button>
                         </div>
                     </form>
 
@@ -364,6 +367,11 @@
                             <input type="text" id="set-color" placeholder="#0066FF">
                         </div>
                         <div class="form-group">
+                            <label>Registered Departments / Specialties (comma-separated)</label>
+                            <input type="text" id="set-specialties" placeholder="e.g. General Medicine, Cardiology, Orthopedics">
+                            <small style="color: #64748b; font-size: 0.8rem; margin-top: 4px; display: block;">These departments appear in the Add Doctor dropdown.</small>
+                        </div>
+                        <div class="form-group">
                             <label>Hospital Medical Logo (Printed on Top-Right of OP Case Sheet)</label>
                             <div style="display: flex; align-items: center; gap: 15px; margin-top: 8px;">
                                 <div id="logo-preview-box" style="width: 70px; height: 70px; border-radius: 8px; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f8fafc;">
@@ -434,6 +442,91 @@
             window.location.href = '/login.html';
         });
 
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function populateDepartmentDropdown() {
+            const deptSelect = document.getElementById('doc-dept');
+            if (!deptSelect) return;
+
+            const currentVal = deptSelect.value;
+            const deptSet = new Set();
+
+            // 1. Departments selected while registering (from myHospital.specialties)
+            if (myHospital && myHospital.specialties) {
+                myHospital.specialties.split(',')
+                    .map(s => s.trim())
+                    .filter(Boolean)
+                    .forEach(s => deptSet.add(s));
+            }
+
+            // 2. Also include departments from currently loaded doctors for this hospital
+            if (Array.isArray(loadedDoctors)) {
+                loadedDoctors.forEach(d => {
+                    if (d.department && d.department.trim()) {
+                        deptSet.add(d.department.trim());
+                    }
+                });
+            }
+
+            // 3. Fallback list of standard specialties if none recorded yet
+            if (deptSet.size === 0) {
+                const defaultDepts = [
+                    'General Medicine', 'Cardiology', 'Pediatrics', 'Orthopedics',
+                    'Dermatology', 'ENT', 'Gynecology & Obstetrics', 'Neurology',
+                    'Oncology', 'Gastroenterology', 'Pulmonology', 'Nephrology',
+                    'Ophthalmology', 'Urology', 'Psychiatry', 'Dental Surgery'
+                ];
+                defaultDepts.forEach(d => deptSet.add(d));
+            }
+
+            const sortedDepts = Array.from(deptSet).sort((a, b) => a.localeCompare(b));
+
+            deptSelect.innerHTML = '<option value="" disabled selected>-- Select Registered Department --</option>' +
+                sortedDepts.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('') +
+                '<option value="__OTHER__">➕ Other / Add New Department...</option>';
+
+            if (currentVal && (deptSet.has(currentVal) || currentVal === '__OTHER__')) {
+                deptSelect.value = currentVal;
+            }
+        }
+
+        function handleDeptChange(val) {
+            const customInput = document.getElementById('doc-dept-custom');
+            if (!customInput) return;
+            if (val === '__OTHER__') {
+                customInput.style.display = 'block';
+                customInput.required = true;
+                customInput.focus();
+            } else {
+                customInput.style.display = 'none';
+                customInput.required = false;
+                customInput.value = '';
+            }
+        }
+
+        function showAddDoctorForm() {
+            populateDepartmentDropdown();
+            document.getElementById('add-doctor-form').style.display = 'block';
+        }
+
+        function cancelAddDoctor() {
+            document.getElementById('add-doctor-form').reset();
+            const custom = document.getElementById('doc-dept-custom');
+            if (custom) {
+                custom.style.display = 'none';
+                custom.required = false;
+            }
+            document.getElementById('add-doctor-form').style.display = 'none';
+        }
+
         async function loadMyHospital() {
             try {
                 const res = await fetch('/api/v1/hospital-manager/my-hospital');
@@ -441,6 +534,7 @@
                     myHospital = await res.json();
                     document.getElementById('sidebar-hospital-name').textContent = myHospital.name;
                     document.getElementById('banner-hospital-name').textContent = myHospital.name;
+                    populateDepartmentDropdown();
                 }
             } catch(e) { console.error(e); }
         }
@@ -480,6 +574,7 @@
                 const res = await fetch('/api/v1/hospital-manager/doctors');
                 if(res.ok) {
                     loadedDoctors = await res.json();
+                    populateDepartmentDropdown();
                     const tbody = document.querySelector('#doctors-table tbody');
                     tbody.innerHTML = loadedDoctors.map(d => {
                         const isAvail = d.availableToday !== undefined ? d.availableToday : d.available;
@@ -554,9 +649,18 @@
             const s1Limit = parseInt(document.getElementById('doc-shift1-limit').value) || 15;
             const s2Limit = parseInt(document.getElementById('doc-shift2-limit').value) || 15;
 
+            let deptVal = document.getElementById('doc-dept').value;
+            if (deptVal === '__OTHER__') {
+                deptVal = document.getElementById('doc-dept-custom').value.trim();
+            }
+            if (!deptVal) {
+                showToast('Please select or specify a department');
+                return;
+            }
+
             const payload = {
                 name: document.getElementById('doc-name').value.trim(),
-                department: document.getElementById('doc-dept').value.trim(),
+                department: deptVal,
                 qualification: document.getElementById('doc-qual').value.trim(),
                 roomNumber: document.getElementById('doc-room').value.trim(),
                 consultationFee: parseFloat(document.getElementById('doc-fee').value) || 500,
@@ -578,7 +682,13 @@
                 if(res.ok) {
                     showToast('Specialist Doctor Added Successfully');
                     document.getElementById('add-doctor-form').reset();
+                    const custom = document.getElementById('doc-dept-custom');
+                    if (custom) {
+                        custom.style.display = 'none';
+                        custom.required = false;
+                    }
                     document.getElementById('add-doctor-form').style.display='none';
+                    await loadMyHospital();
                     loadDoctors();
                     loadDashboardData();
                 } else {
@@ -674,6 +784,7 @@
                 document.getElementById('set-address').value = myHospital.address || '';
                 document.getElementById('set-phone').value = myHospital.phone || '';
                 document.getElementById('set-color').value = myHospital.brandColor || '';
+                document.getElementById('set-specialties').value = myHospital.specialties || '';
                 if (myHospital.logoUrl) {
                     document.getElementById('set-logo-preview').src = myHospital.logoUrl;
                 } else {
@@ -716,6 +827,7 @@
                 address: document.getElementById('set-address').value,
                 phone: document.getElementById('set-phone').value,
                 brandColor: document.getElementById('set-color').value,
+                specialties: document.getElementById('set-specialties').value,
                 logoUrl: uploadedLogoBase64 || (myHospital ? myHospital.logoUrl : null)
             };
             try {
@@ -727,6 +839,7 @@
                 if(res.ok) {
                     showToast('Settings & Logo updated successfully!');
                     await loadMyHospital();
+                    populateDepartmentDropdown();
                 } else {
                     const err = await res.json().catch(() => ({}));
                     showToast(err.message || 'Error updating settings');

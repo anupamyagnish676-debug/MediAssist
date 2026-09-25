@@ -84,7 +84,7 @@ public class HospitalManagerApiController {
             int consultationDurationMinutes,
             String availableTime
     ) {}
-    public record UpdateHospitalSettingsRequest(String name, String address, String phone, String brandColor, String logoUrl) {}
+    public record UpdateHospitalSettingsRequest(String name, String address, String phone, String brandColor, String logoUrl, String specialties) {}
 
     /**
      * Get details of the hospital assigned to this manager.
@@ -95,7 +95,7 @@ public class HospitalManagerApiController {
     }
 
     /**
-     * Update hospital settings (name, address, phone, brandColor, logoUrl).
+     * Update hospital settings (name, address, phone, brandColor, logoUrl, specialties).
      */
     @PutMapping("/settings")
     public ResponseEntity<?> updateSettings(@RequestBody UpdateHospitalSettingsRequest req) {
@@ -104,6 +104,7 @@ public class HospitalManagerApiController {
         if (req.address() != null) h.setAddress(req.address().trim());
         if (req.phone() != null) h.setPhone(req.phone().trim());
         if (req.brandColor() != null && !req.brandColor().isBlank()) h.setBrandColor(req.brandColor().trim());
+        if (req.specialties() != null) h.setSpecialties(req.specialties().trim());
         if (req.logoUrl() != null && !req.logoUrl().isBlank()) {
             h.setLogoUrl(compressLogoIfBase64(req.logoUrl().trim()));
         }
@@ -198,6 +199,23 @@ public class HospitalManagerApiController {
         if (req.consultationDurationMinutes() > 0) doc.setConsultationDurationMinutes(req.consultationDurationMinutes());
         if (req.availableTime() != null && !req.availableTime().isBlank()) doc.setAvailableTime(req.availableTime().trim());
         else doc.refreshCombinedAvailableTime();
+
+        if (req.department() != null && !req.department().isBlank()) {
+            String deptTrimmed = req.department().trim();
+            if (h.getSpecialties() == null || h.getSpecialties().isBlank()) {
+                h.setSpecialties(deptTrimmed);
+                hospitalRepository.save(h);
+            } else {
+                List<String> list = Arrays.stream(h.getSpecialties().split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .collect(java.util.stream.Collectors.toList());
+                if (list.stream().noneMatch(s -> s.equalsIgnoreCase(deptTrimmed))) {
+                    h.setSpecialties(h.getSpecialties() + ", " + deptTrimmed);
+                    hospitalRepository.save(h);
+                }
+            }
+        }
 
         return ResponseEntity.ok(doctorRepository.save(doc));
     }
