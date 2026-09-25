@@ -43,16 +43,17 @@ public class AppointmentApiController {
         appt.setStatus(Appointment.Status.CHECKED_IN);
         appointmentRepository.save(appt);
 
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "Check-in successful!",
-                "serialNumber", appt.getSerialNumber(),
-                "patientPhone", appt.getPatientPhone(),
-                "patientName", appt.getPatientName(),
-                "doctorName", appt.getDoctor().getName(),
-                "department", appt.getDoctor().getDepartment(),
-                "roomNumber", appt.getDoctor().getRoomNumber()
-        ));
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("success", true);
+        resp.put("message", "Check-in successful!");
+        resp.put("serialNumber", appt.getSerialNumber());
+        resp.put("patientPhone", appt.getPatientPhone());
+        resp.put("patientName", appt.getPatientName() != null ? appt.getPatientName() : "Walk-in Patient");
+        resp.put("doctorName", appt.getDoctor() != null ? appt.getDoctor().getName() : "N/A");
+        resp.put("department", appt.getDoctor() != null ? appt.getDoctor().getDepartment() : "General");
+        resp.put("roomNumber", appt.getDoctor() != null ? appt.getDoctor().getRoomNumber() : "-");
+        resp.put("timeSlot", appt.getTimeSlot() != null ? appt.getTimeSlot() : "");
+        return ResponseEntity.ok(resp);
     }
 
     /**
@@ -81,13 +82,16 @@ public class AppointmentApiController {
         Map<String, Object> response = new HashMap<>();
         response.put("hospitalId", hospitalId);
         response.put("currentServingToken", currentServing != null ? currentServing.getSerialNumber() : null);
-        response.put("currentServingDoctor", currentServing != null ? currentServing.getDoctor().getName() : "Waiting for next patient");
-        response.put("currentServingRoom", currentServing != null ? currentServing.getDoctor().getRoomNumber() : "-");
-        response.put("waitingQueue", waitingList.stream().map(a -> Map.of(
-                "token", a.getSerialNumber(),
-                "doctor", a.getDoctor().getName(),
-                "room", a.getDoctor().getRoomNumber()
-        )).toList());
+        response.put("currentServingDoctor", currentServing != null ? (currentServing.getDoctor() != null ? currentServing.getDoctor().getName() : "Doctor") : "Waiting for next patient");
+        response.put("currentServingRoom", currentServing != null && currentServing.getDoctor() != null ? currentServing.getDoctor().getRoomNumber() : "-");
+        response.put("waitingQueue", waitingList.stream().map(a -> {
+            Map<String, Object> item = new HashMap<>();
+            item.put("token", a.getSerialNumber());
+            item.put("doctor", a.getDoctor() != null ? a.getDoctor().getName() : "Doctor");
+            item.put("room", a.getDoctor() != null ? a.getDoctor().getRoomNumber() : "-");
+            item.put("timeSlot", a.getTimeSlot() != null ? a.getTimeSlot() : "");
+            return item;
+        }).toList());
 
         return ResponseEntity.ok(response);
     }

@@ -250,9 +250,11 @@ public class AppointmentSlipPdfService {
 
                 y -= tokenBoxHeight + 12;
 
-                // Date & Time
-                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Date & Time:", dateStr + " at " + timeSlot, darkText, mutedText);
-                y -= 18;
+                // Appointment Date & Tentative Time Window
+                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Appointment Date:", dateStr, darkText, mutedText);
+                y -= 16;
+                drawLabelValue(cs, fontBold, fontRegular, margin, y, "Tentative Window:", timeSlot, darkText, mutedText);
+                y -= 16;
 
                 // Consulting Doctor & Department
                 drawLabelValue(cs, fontBold, fontRegular, margin, y, "Consulting Doctor:", truncate(doctorName + " (" + department + ")", 40), darkText, mutedText);
@@ -346,10 +348,10 @@ public class AppointmentSlipPdfService {
                 y -= sectionHeaderHeight + 8;
 
                 String[] instructions = {
-                    "Please arrive 15 minutes before your appointment",
+                    "Please arrive 15 minutes before your tentative window for QR check-in",
                     "Carry this slip and a valid ID proof",
                     "This slip is valid only for the date mentioned",
-                    "For cancellation, contact the hospital helpline"
+                    "For cancellation or live queue tracking, send 'queue status' on WhatsApp"
                 };
 
                 cs.setNonStrokingColor(darkText[0], darkText[1], darkText[2]);

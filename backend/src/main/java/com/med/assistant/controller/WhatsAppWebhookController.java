@@ -42,6 +42,7 @@ public class WhatsAppWebhookController {
     private final AppointmentRepository appointmentRepository;
     private final ExternalHospitalService externalHospitalService;
     private final PatientSessionRepository patientSessionRepository;
+    private final OpdScheduleService opdScheduleService;
     private final Map<String, String> userTriageDept = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, double[]> userLocation = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -55,7 +56,8 @@ public class WhatsAppWebhookController {
                                      DoctorRepository doctorRepository,
                                      AppointmentRepository appointmentRepository,
                                      ExternalHospitalService externalHospitalService,
-                                     PatientSessionRepository patientSessionRepository) {
+                                     PatientSessionRepository patientSessionRepository,
+                                     OpdScheduleService opdScheduleService) {
         this.whatsAppClient = whatsAppClient;
         this.locationService = locationService;
         this.geminiAiService = geminiAiService;
@@ -67,6 +69,7 @@ public class WhatsAppWebhookController {
         this.appointmentRepository = appointmentRepository;
         this.externalHospitalService = externalHospitalService;
         this.patientSessionRepository = patientSessionRepository;
+        this.opdScheduleService = opdScheduleService;
     }
 
     /**
@@ -237,6 +240,14 @@ public class WhatsAppWebhookController {
         if (lower.contains("instant booking") || lower.contains("partner hospital") || lower.contains("partner clinic") 
                 || lower.contains("book token") || lower.contains("book opd")) {
             handleDiscoverInstantBooking(fromPhone);
+            return;
+        }
+
+        // 2c. Live Queue / Token Tracking Command
+        if (lower.contains("queue status") || lower.contains("my token") || lower.contains("token status")
+                || lower.contains("my appointment") || lower.contains("live queue") || lower.contains("check queue")
+                || lower.equals("token") || lower.equals("queue")) {
+            handleQueueStatusCheck(fromPhone);
             return;
         }
 
@@ -412,6 +423,9 @@ public class WhatsAppWebhookController {
             } else if ("MY_ALARMS".equals(buttonId)) {
                 showMyAlarms(fromPhone);
                 return;
+            } else if ("QUEUE_STATUS".equals(buttonId) || "MY_TOKEN".equals(buttonId)) {
+                handleQueueStatusCheck(fromPhone);
+                return;
             }
 
             if (buttonId.startsWith("DOC_")) {
@@ -561,9 +575,12 @@ public class WhatsAppWebhookController {
         int todayBookings = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, LocalDate.now());
         int nextTokenNumber = todayBookings + 1;
 
+        OpdScheduleService.TentativeSlot slot = opdScheduleService.calculateTentativeWindow(doctor, nextTokenNumber);
+        String timeSlotDescription = slot.timeWindow();
+
         String qrToken = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
         Appointment appointment = new Appointment(hospital, doctor, fromPhone, "Patient",
-                LocalDate.now(), "11:00 AM", nextTokenNumber, qrToken);
+                LocalDate.now(), timeSlotDescription, nextTokenNumber, qrToken);
 
         appointment = appointmentRepository.save(appointment);
 
@@ -576,32 +593,40 @@ public class WhatsAppWebhookController {
 
         String pdfUrl = "https://mediassist-1hdl.onrender.com/api/v1/appointments/" + appointment.getId() + "/pdf";
 
-        // Send Confirmation Text
+        // Send Confirmation Text with Staggered Arrival Guidance
         String confirmation = """
-            🎉 *Appointment Confirmed!*
+            🎉 *OPD Queue Token Confirmed!*
             
             🏥 *Hospital:* %s
             👨‍⚕️ *Doctor:* %s (%s)
             🚪 *Room:* %s
             📅 *Date:* Today, %s
-            ⏰ *Time:* 11:00 AM
             
             👉 *YOUR QUEUE TOKEN: #%02d*
+            ⏰ *Tentative Consultation Window:* %s
+            🚪 *Recommended Reporting Time:* %s (15 min prior)
             🔑 *Check-In Code:* %s
             
             📥 *Download Slip (PDF):*
             %s
             
-            📄 Show the QR code or Code on your slip to the receptionist upon arrival for instant check-in!
+            💡 *Why staggered timing?*
+            To eliminate crowded waiting rooms and reduce physical wait times, please plan your arrival close to *%s*.
+            
+            📄 Show your QR slip or code at the reception desk for instant contactless check-in!
+            Type *"queue status"* or *"my token"* anytime to track your turn live!
             """.formatted(
                 hospital.getName(),
                 doctor.getName(),
                 doctor.getDepartment(),
-                doctor.getRoomNumber(),
+                doctor.getRoomNumber() != null ? doctor.getRoomNumber() : "OPD Desk",
                 LocalDate.now(),
                 nextTokenNumber,
+                slot.timeWindow(),
+                slot.reportingTime(),
                 qrToken,
-                pdfUrl
+                pdfUrl,
+                slot.reportingTime()
         );
 
         whatsAppClient.sendTextMessage(fromPhone, confirmation);
@@ -969,5 +994,90 @@ public class WhatsAppWebhookController {
             sb.append("💡 *To cancel all alarms*, simply message: *\"Cancel all alarms\"* or *\"Stop alarms\"*");
             whatsAppClient.sendTextMessage(fromPhone, sb.toString());
         }
+    }
+
+    private void handleQueueStatusCheck(String fromPhone) {
+        List<Appointment> userAppts = appointmentRepository.findByPatientPhoneOrderByAppointmentDateDesc(fromPhone);
+        List<Appointment> todayActive = userAppts.stream()
+                .filter(a -> a.getAppointmentDate().equals(LocalDate.now()) && a.getStatus() != Appointment.Status.CANCELLED)
+                .toList();
+
+        if (todayActive.isEmpty()) {
+            whatsAppClient.sendTextMessage(fromPhone, """
+                📋 *No Active OPD Token for Today!*
+                
+                You don't have any booked OPD queue tokens for today.
+                
+                To book an instant token with a doctor, tap:
+                👉 *[⚡ Instant OPD Token]* or message *"Find hospital"*
+                """);
+            return;
+        }
+
+        Appointment appt = todayActive.get(0);
+        Doctor doctor = appt.getDoctor();
+        Hospital hospital = appt.getHospital();
+
+        List<Appointment> docAppts = appointmentRepository.findByDoctorIdAndAppointmentDateOrderBySerialNumberAsc(doctor.getId(), LocalDate.now());
+
+        // Calculate currently serving token
+        int currentlyServing = 0;
+        for (Appointment a : docAppts) {
+            if (a.getStatus() == Appointment.Status.CHECKED_IN) {
+                currentlyServing = a.getSerialNumber();
+                break;
+            }
+        }
+        if (currentlyServing == 0 && !docAppts.isEmpty()) {
+            currentlyServing = Math.max(1, appt.getSerialNumber() - 1);
+        }
+
+        int ahead = (int) docAppts.stream()
+                .filter(a -> a.getSerialNumber() < appt.getSerialNumber() 
+                        && a.getStatus() != Appointment.Status.COMPLETED 
+                        && a.getStatus() != Appointment.Status.CANCELLED)
+                .count();
+
+        int estWaitMinutes = ahead * 15;
+
+        String pdfUrl = "https://mediassist-1hdl.onrender.com/api/v1/appointments/" + appt.getId() + "/pdf";
+
+        String msg = """
+            🎫 *LIVE OPD QUEUE STATUS* ⏱️
+            
+            🏥 *Hospital:* %s
+            👨‍⚕️ *Doctor:* %s (%s)
+            🚪 *Consultation Room:* %s
+            
+            👉 *Your Queue Token:* #%02d
+            ⏰ *Tentative Time Window:* %s
+            🔑 *Check-In Code:* %s
+            
+            🔔 *Live Waiting Room Update:*
+            • Currently in Consultation: *Token #%02d*
+            • Patients Ahead of You: *%d %s*
+            • Estimated Wait Time: *~%d minutes*
+            
+            💡 *Zero-Crowd Guideline:*
+            Please plan to arrive at Room %s around your assigned window so you never have to wait in physical lines!
+            
+            📥 *Download Slip:* %s
+            """.formatted(
+                hospital.getName(),
+                doctor.getName(),
+                doctor.getDepartment(),
+                doctor.getRoomNumber() != null ? doctor.getRoomNumber() : "OPD Desk",
+                appt.getSerialNumber(),
+                appt.getTimeSlot() != null ? appt.getTimeSlot() : "On Schedule",
+                appt.getQrCodeToken(),
+                currentlyServing,
+                ahead,
+                ahead == 1 ? "patient" : "patients",
+                estWaitMinutes,
+                doctor.getRoomNumber() != null ? doctor.getRoomNumber() : "OPD",
+                pdfUrl
+        );
+
+        whatsAppClient.sendTextMessage(fromPhone, msg);
     }
 }

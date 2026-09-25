@@ -115,6 +115,7 @@
                             <div style="background: var(--gray-50); padding: 1rem; border-radius: 8px; border: 1px solid var(--gray-200); text-align: left;">
                                 <p><strong>Consulting Doctor:</strong> ${data.doctorName} (${data.department})</p>
                                 <p style="margin-top: 0.25rem;"><strong>Assigned OPD:</strong> Room ${data.roomNumber}</p>
+                                ${data.timeSlot ? `<p style="margin-top: 0.25rem; color: #0284c7;"><strong>Tentative Slot:</strong> ${data.timeSlot}</p>` : ''}
                             </div>
 
                             <p style="font-size: 0.85rem; color: var(--gray-400); margin-top: 1rem;">

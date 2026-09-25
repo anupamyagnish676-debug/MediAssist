@@ -392,7 +392,7 @@
                             <td>${a.patientPhone}</td>
                             <td>${a.doctorName}</td>
                             <td>${a.department}</td>
-                            <td>${new Date(a.appointmentTime).toLocaleTimeString()}</td>
+                            <td>${a.timeSlot || a.appointmentTime || '-'}</td>
                             <td>${a.status}</td>
                             <td>${a.qrToken || '-'}</td>
                         </tr>
