@@ -17,7 +17,19 @@ public class LocationService {
         this.hospitalRepository = hospitalRepository;
     }
 
-    public record NearbyHospitalResult(Hospital hospital, double distanceKm, int availableDoctorsCount) {}
+    public record NearbyHospitalResult(
+            Hospital hospital,
+            double distanceKm,
+            int availableDoctorsCount,
+            String googleMapsDirectionsUrl
+    ) {
+        public NearbyHospitalResult(Hospital hospital, double distanceKm, int availableDoctorsCount) {
+            this(hospital, distanceKm, availableDoctorsCount,
+                    String.format(java.util.Locale.US, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f",
+                            hospital != null ? hospital.getLatitude() : 0.0,
+                            hospital != null ? hospital.getLongitude() : 0.0));
+        }
+    }
 
     public record HospitalDiscoveryResult(
             List<NearbyHospitalResult> localBookingHospitals,
@@ -106,28 +118,28 @@ public class LocationService {
      * Guarantees the patient is never presented with an empty or broken list.
      */
     public List<NearbyHospitalResult> findLocalHospitalsWithSmartFallback(double userLat, double userLon, String department) {
-        List<NearbyHospitalResult> res = findLocalHospitalsByDepartment(userLat, userLon, 25.0, department);
+        // Tier 1: Matching department within 30 km
+        List<NearbyHospitalResult> res = findLocalHospitalsByDepartment(userLat, userLon, 30.0, department);
         if (!res.isEmpty()) return res;
 
-        res = findLocalHospitalsByDepartment(userLat, userLon, 100.0, department);
+        // Tier 2: Any partner hospital within 30 km (shows nearby clinics even if different department)
+        res = findNearbyHospitals(userLat, userLon, 30.0);
         if (!res.isEmpty()) return res;
 
-        res = findNearbyHospitals(userLat, userLon, 100.0);
+        // Tier 3: Matching department within 60 km
+        res = findLocalHospitalsByDepartment(userLat, userLon, 60.0, department);
         if (!res.isEmpty()) return res;
 
-        // Nationwide partner fallback: return closest registered partner hospitals
-        List<Hospital> allHospitals = hospitalRepository.findByActiveTrue();
-        return allHospitals.stream()
-                .map(h -> {
-                    double dist = calculateDistanceKm(userLat, userLon, h.getLatitude(), h.getLongitude());
-                    int availableDocs = (int) h.getDoctors().stream()
-                            .filter(com.med.assistant.model.Doctor::isAvailableToday)
-                            .count();
-                    return new NearbyHospitalResult(h, dist, availableDocs);
-                })
-                .sorted(Comparator.comparingDouble(NearbyHospitalResult::distanceKm))
-                .limit(5)
-                .collect(Collectors.toList());
+        // Tier 4: Any partner hospital within 60 km
+        res = findNearbyHospitals(userLat, userLon, 60.0);
+        if (!res.isEmpty()) return res;
+
+        // Tier 5: Regional partner hospital within 90 km
+        res = findNearbyHospitals(userLat, userLon, 90.0);
+        if (!res.isEmpty()) return res;
+
+        // Do not return nationwide hospitals 1000+ km away as local clinics
+        return List.of();
     }
 
     /**

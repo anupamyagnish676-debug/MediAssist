@@ -108,7 +108,7 @@ public class ExternalHospitalService {
                 double pLon = place.path("geometry").path("location").path("lng").asDouble(lon);
                 double dist = calculateDistanceKm(lat, lon, pLat, pLon);
 
-                String mapsUrl = String.format(java.util.Locale.US, "https://www.google.com/maps/search/?api=1&query=%f,%f", pLat, pLon);
+                String mapsUrl = String.format(java.util.Locale.US, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f", pLat, pLon);
                 list.add(new ExternalHospital(name, address, dist, mapsUrl));
             }
         }
@@ -167,7 +167,7 @@ public class ExternalHospitalService {
                 String addr = tags.path("addr:street").asText("");
                 if (addr.isBlank()) addr = tags.path("addr:suburb").asText(tags.path("addr:city").asText(""));
 
-                String mapsUrl = String.format(java.util.Locale.US, "https://www.google.com/maps/search/?api=1&query=%f,%f", pLat, pLon);
+                String mapsUrl = String.format(java.util.Locale.US, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f", pLat, pLon);
                 list.add(new ExternalHospital(name, addr, dist, mapsUrl));
             }
         }
@@ -178,21 +178,17 @@ public class ExternalHospitalService {
     }
 
     private List<ExternalHospital> searchViaOsm(double lat, double lon, String departmentKeyword) throws Exception {
-        double delta = 0.18; // approx 20 km bounding box
-        String query = "hospital";
-        if (departmentKeyword != null && !departmentKeyword.isBlank() && !departmentKeyword.equalsIgnoreCase("General Medicine")) {
-            query = departmentKeyword + " hospital";
-        }
-        String encodedQ = URLEncoder.encode(query, StandardCharsets.UTF_8);
+        double delta = 0.15; // approx 15-18 km bounding box around user
+        String encodedQ = URLEncoder.encode("hospital", StandardCharsets.UTF_8);
 
         String url = String.format(java.util.Locale.US,
-                "https://nominatim.openstreetmap.org/search?format=json&q=%s&bounded=1&viewbox=%f,%f,%f,%f&limit=15",
+                "https://nominatim.openstreetmap.org/search?format=json&q=%s&bounded=1&viewbox=%f,%f,%f,%f&limit=25",
                 encodedQ, lon - delta, lat + delta, lon + delta, lat - delta
         );
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("User-Agent", "MediAssistHealthDesk/1.0 (contact@mediassist.com)")
+                .header("User-Agent", "MediAssistHealthDesk/2.0 (contact@mediassist.com)")
                 .timeout(Duration.ofSeconds(6))
                 .GET()
                 .build();
@@ -201,25 +197,37 @@ public class ExternalHospitalService {
         JsonNode root = objectMapper.readTree(resp.body());
 
         List<ExternalHospital> list = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+
         if (root.isArray()) {
             for (JsonNode place : root) {
-                String rawName = place.path("display_name").asText("Hospital");
+                String rawName = place.path("display_name").asText("");
+                if (rawName.isBlank()) continue;
+                String lower = rawName.toLowerCase();
+
+                // Filter out non-hospital noise (sports grounds, chemist shops, etc.)
+                if (lower.contains("ground") || lower.contains("playground") || lower.contains("bus stop")
+                        || lower.contains("pharmacy") || lower.contains("chemist") || lower.contains("shop")) {
+                    continue;
+                }
+
                 String name = cleanHospitalName(rawName);
-                String[] parts = rawName.split(",");
-                String address = parts.length > 1 ? (parts[1].trim() + (parts.length > 2 ? ", " + parts[2].trim() : "")) : "";
+                String norm = name.toLowerCase();
+                if (seen.contains(norm)) continue;
+                seen.add(norm);
 
                 double pLat = place.path("lat").asDouble(lat);
                 double pLon = place.path("lon").asDouble(lon);
                 double dist = calculateDistanceKm(lat, lon, pLat, pLon);
+                if (dist > 35.0) continue; // Exclude anything beyond 35 km
 
-                String mapsUrl = String.format(java.util.Locale.US, "https://www.google.com/maps/search/?api=1&query=%f,%f", pLat, pLon);
+                String[] parts = rawName.split(",");
+                String address = parts.length > 1 ? (parts[1].trim() + (parts.length > 2 ? ", " + parts[2].trim() : "")) : "";
+
+                // Exact Google Maps Directions link: opens navigation directly on patient's device
+                String mapsUrl = String.format(java.util.Locale.US, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f", pLat, pLon);
                 list.add(new ExternalHospital(name, address, dist, mapsUrl));
             }
-        }
-
-        // If specific keyword query returned nothing, fall back to general hospital search
-        if (list.isEmpty() && !"hospital".equals(query)) {
-            return searchViaOsm(lat, lon, null);
         }
 
         // Strict Ascending Order (lowest distance first)

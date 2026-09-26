@@ -237,21 +237,7 @@ public class WhatsAppWebhookController {
 
         saveUserSession(fromPhone, lat, lon, preferredDept);
 
-        String prompt = "🏥 *Hospital Discovery & Care Options*\n\n"
-                + "📍 GPS location received near your area.\n"
-                + "🎯 *Specialist Needed:* *" + preferredDept + "*\n\n"
-                + "Please select how you would like to explore hospitals:\n"
-                + "• *⚡ Instant Booking:* Registered partner clinics within 25 km with OPD tokens on WhatsApp\n"
-                + "• *🗺️ Nearby Hospitals:* All hospitals near you retrieved live from Google Maps";
-
-        whatsAppClient.sendInteractiveButtons(
-                fromPhone,
-                prompt,
-                List.of(
-                        new WhatsAppClientService.ButtonOption("DISCOVER_INSTANT", "⚡ Instant Booking"),
-                        new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ View on Maps")
-                )
-        );
+        displayOptimizedNearestHospitals(fromPhone, lat, lon, preferredDept);
     }
 
     private void handleTextMessage(String fromPhone, Map<String, Object> textObj) {
@@ -516,14 +502,8 @@ public class WhatsAppWebhookController {
         List<LocationService.NearbyHospitalResult> local = locationService.findLocalHospitalsWithSmartFallback(loc[0], loc[1], preferredDept);
 
         if (local.isEmpty()) {
-            String msg = "⚠️ *No Partner Clinics Available Right Now*\n\n"
-                    + "Currently, registered partner clinics in your area do not have on-duty doctors.\n\n"
-                    + "👉 Tap below to view all hospitals near you on Google Maps:";
-            whatsAppClient.sendInteractiveButtons(
-                    fromPhone,
-                    msg,
-                    List.of(new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ View on Maps"))
-            );
+            whatsAppClient.sendTextMessage(fromPhone, "ℹ️ No registered partner clinics currently open within 90 km of your location.\n\nSearching nearby hospitals on Google Maps for you...");
+            displayOptimizedNearestHospitals(fromPhone, loc[0], loc[1], preferredDept);
             return;
         }
 
@@ -535,7 +515,7 @@ public class WhatsAppWebhookController {
             Hospital h = res.hospital();
             String name = h.getName() != null ? h.getName().trim() : "Clinic";
             if (name.length() > 24) name = name.substring(0, 24).trim();
-            String desc = res.distanceKm() + " km away • " + res.availableDoctorsCount() + " doc(s) on-duty";
+            String desc = String.format(java.util.Locale.US, "%.1f km • %d doc(s) on-duty", res.distanceKm(), res.availableDoctorsCount());
             if (desc.length() > 72) desc = desc.substring(0, 72);
             rows.add(Map.of(
                     "id", "HOSP_" + h.getId(),
@@ -565,8 +545,9 @@ public class WhatsAppWebhookController {
             for (int i = 0; i < local.size(); i++) {
                 Hospital h = local.get(i).hospital();
                 sb.append((i + 1)).append("️⃣ *").append(h.getName()).append("*\n");
-                sb.append("   📍 ").append(local.get(i).distanceKm()).append(" km away • ")
-                        .append(local.get(i).availableDoctorsCount()).append(" doctor(s) on-duty\n\n");
+                sb.append("   📍 ").append(String.format(java.util.Locale.US, "%.1f", local.get(i).distanceKm())).append(" km away • ")
+                        .append(local.get(i).availableDoctorsCount()).append(" doctor(s) on-duty\n");
+                sb.append("   🧭 Directions: ").append(local.get(i).googleMapsDirectionsUrl()).append("\n\n");
             }
             sb.append("👉 Reply with *1*, *2*, or *3* to view available doctors!");
             whatsAppClient.sendTextMessage(fromPhone, sb.toString());
@@ -608,7 +589,18 @@ public class WhatsAppWebhookController {
         String deptHeader = (preferredDept != null && !preferredDept.isBlank()) ? preferredDept + " " : "";
         docText.append("👨‍⚕️ *").append(deptHeader).append("Specialists Available Today at ")
                .append(hospital != null ? hospital.getName() : "Hospital")
-               .append(":*\n\n");
+               .append(":*\n");
+        if (hospital != null) {
+            if (hospital.getAddress() != null && !hospital.getAddress().isBlank()) {
+                docText.append("📍 *Address:* ").append(hospital.getAddress().trim()).append("\n");
+            }
+            if (hospital.getLatitude() != 0.0 && hospital.getLongitude() != 0.0) {
+                String dirUrl = String.format(java.util.Locale.US, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f",
+                        hospital.getLatitude(), hospital.getLongitude());
+                docText.append("🧭 *Directions:* ").append(dirUrl).append("\n");
+            }
+            docText.append("\n");
+        }
 
         int idx = 1;
         for (Doctor doc : deptDocs) {
@@ -668,42 +660,119 @@ public class WhatsAppWebhookController {
         }
 
         String preferredDept = userTriageDept.get(fromPhone);
-        List<ExternalHospitalService.ExternalHospital> mapsHospitals = externalHospitalService.findNearbyHospitalsFromMaps(loc[0], loc[1], preferredDept);
+        displayOptimizedNearestHospitals(fromPhone, loc[0], loc[1], preferredDept);
+    }
+
+    private void displayOptimizedNearestHospitals(String fromPhone, double lat, double lon, String preferredDept) {
+        if (preferredDept == null || preferredDept.isBlank()) {
+            preferredDept = "General Medicine";
+        }
+
+        // 1. Fetch local partner hospitals within realistic radius (max 90 km, smart fallback)
+        List<LocationService.NearbyHospitalResult> localPartners = locationService.findLocalHospitalsWithSmartFallback(lat, lon, preferredDept);
+
+        // 2. Fetch external hospitals from Google Maps / live OSM within 35 km
+        List<ExternalHospitalService.ExternalHospital> externalHospitals = externalHospitalService.findNearbyHospitalsFromMaps(lat, lon, preferredDept);
+
+        // Cache partner hospital IDs for quick number reply (1, 2, 3)
+        if (!localPartners.isEmpty()) {
+            userRecentHospitals.put(fromPhone, localPartners.stream().map(r -> r.hospital().getId()).toList());
+        }
 
         StringBuilder sb = new StringBuilder();
-        sb.append("🗺️ *Hospitals Near You (Google Maps)*\n");
-        sb.append("📍 _Showing medical facilities near your GPS location_\n");
-        if (preferredDept != null && !preferredDept.isBlank() && !preferredDept.equalsIgnoreCase("General Medicine")) {
+        sb.append("🏥 *Hospitals Near You (Nearest First)*\n");
+        sb.append("📍 _Showing verified healthcare centers closest to your GPS location_\n");
+        if (!preferredDept.equalsIgnoreCase("General Medicine")) {
             sb.append("🎯 *Specialty:* *").append(preferredDept).append("*\n");
         }
         sb.append("\n");
 
-        if (mapsHospitals.isEmpty()) {
-            sb.append("Medical facilities found in your area. Open the Google Maps link below for live routes and directions:\n\n");
-        } else {
-            int idx = 1;
-            for (ExternalHospitalService.ExternalHospital eh : mapsHospitals) {
-                sb.append(idx++).append(". 🏥 *").append(eh.name()).append("*\n");
-                sb.append("   • Distance: ~").append(eh.distanceKm()).append(" km\n");
-                if (eh.address() != null && !eh.address().isBlank()) {
-                    sb.append("   • Area: ").append(eh.address()).append("\n");
+        int serial = 1;
+
+        if (!localPartners.isEmpty()) {
+            sb.append("⚡ *PARTNER CLINICS (Instant WhatsApp OPD Booking):*\n");
+            for (LocationService.NearbyHospitalResult r : localPartners) {
+                Hospital h = r.hospital();
+                sb.append(serial++).append(". 🏥 *").append(h.getName()).append("*\n");
+                sb.append("   • Distance: ~").append(String.format(java.util.Locale.US, "%.1f", r.distanceKm())).append(" km away\n");
+                if (h.getAddress() != null && !h.getAddress().isBlank()) {
+                    sb.append("   • Address: ").append(h.getAddress().trim()).append("\n");
                 }
-                sb.append("   🔗 ").append(eh.mapsUrl()).append("\n\n");
+                sb.append("   • On-Duty Doctors: ").append(r.availableDoctorsCount()).append(" doctor(s)\n");
+                sb.append("   🧭 *Directions:* ").append(r.googleMapsDirectionsUrl()).append("\n\n");
             }
         }
 
-        String masterUrl = externalHospitalService.generateMasterGoogleMapsUrl(loc[0], loc[1], preferredDept);
-        sb.append("👉 *Open Complete Map on Google Maps:*\n").append(masterUrl);
+        if (!externalHospitals.isEmpty()) {
+            sb.append("🗺️ *NEARBY HOSPITALS & MEDICAL CENTERS:*\n");
+            for (ExternalHospitalService.ExternalHospital eh : externalHospitals) {
+                // Avoid duplicating if an external hospital shares a similar name with a partner clinic
+                boolean isDuplicate = localPartners.stream()
+                        .anyMatch(lp -> {
+                            String lpn = lp.hospital().getName().toLowerCase();
+                            String ehn = eh.name().toLowerCase();
+                            return lpn.contains(ehn) || ehn.contains(lpn);
+                        });
+                if (isDuplicate) continue;
 
-        // 1. Send full hospital list via standard text message (Meta limit is 4,096 chars - plenty of room)
+                sb.append(serial++).append(". 🏥 *").append(eh.name()).append("*\n");
+                sb.append("   • Distance: ~").append(String.format(java.util.Locale.US, "%.1f", eh.distanceKm())).append(" km away\n");
+                if (eh.address() != null && !eh.address().isBlank()) {
+                    sb.append("   • Location: ").append(eh.address().trim()).append("\n");
+                }
+                sb.append("   🧭 *Directions:* ").append(eh.mapsUrl()).append("\n\n");
+            }
+        }
+
+        if (localPartners.isEmpty() && externalHospitals.isEmpty()) {
+            sb.append("ℹ️ No specific hospitals indexed within 35 km of your current pin.\n")
+              .append("Tap the live Google Maps link below to see all surrounding healthcare centers:\n\n");
+        }
+
+        String masterUrl = externalHospitalService.generateMasterGoogleMapsUrl(lat, lon, preferredDept);
+        sb.append("🌐 *Open Full Area Map on Google Maps:*\n").append(masterUrl);
+
+        // Send full list via standard text message (Meta allows up to 4096 chars)
         whatsAppClient.sendTextMessage(fromPhone, sb.toString());
 
-        // 2. Send follow-up interactive prompt with button (concise, safely within 1024 char limit)
-        whatsAppClient.sendInteractiveButtons(
-                fromPhone,
-                "💡 Would you like to book an instant OPD queue token with our local partner clinic?",
-                List.of(new WhatsAppClientService.ButtonOption("DISCOVER_INSTANT", "⚡ Instant Booking"))
-        );
+        // Send follow-up interactive options if partner clinics exist
+        if (!localPartners.isEmpty()) {
+            if (localPartners.size() <= 3) {
+                List<WhatsAppClientService.ButtonOption> buttons = new ArrayList<>();
+                for (LocationService.NearbyHospitalResult r : localPartners) {
+                    Hospital h = r.hospital();
+                    String btnTitle = "Book: " + h.getName();
+                    if (btnTitle.length() > 20) btnTitle = btnTitle.substring(0, 20);
+                    buttons.add(new WhatsAppClientService.ButtonOption("HOSP_" + h.getId(), btnTitle));
+                }
+                whatsAppClient.sendInteractiveButtons(
+                        fromPhone,
+                        "👉 *Select a partner clinic below to view doctor schedules and book your OPD token:*",
+                        buttons
+                );
+            } else {
+                List<Map<String, String>> rows = new ArrayList<>();
+                for (LocationService.NearbyHospitalResult res : localPartners) {
+                    Hospital h = res.hospital();
+                    String name = h.getName() != null ? h.getName().trim() : "Clinic";
+                    if (name.length() > 24) name = name.substring(0, 24).trim();
+                    String desc = String.format(java.util.Locale.US, "%.1f km • %d doc(s) on-duty", res.distanceKm(), res.availableDoctorsCount());
+                    if (desc.length() > 72) desc = desc.substring(0, 72);
+                    rows.add(Map.of(
+                            "id", "HOSP_" + h.getId(),
+                            "title", name,
+                            "description", desc
+                    ));
+                }
+                whatsAppClient.sendInteractiveList(
+                        fromPhone,
+                        "Partner Hospitals",
+                        "👉 Select a partner clinic to view doctor schedules and book your OPD token:",
+                        "Book Token ⚡",
+                        rows
+                );
+            }
+        }
     }
 
     private void promptAppointmentDateSelection(String fromPhone, Long doctorId) {
@@ -992,10 +1061,16 @@ public class WhatsAppWebhookController {
         String noticeBlock = (match.noticeMessage() != null && !match.noticeMessage().isBlank())
                 ? "\n" + match.noticeMessage() + "\n" : "";
 
+        String directionsUrl = (hospital != null && hospital.getLatitude() != 0.0 && hospital.getLongitude() != 0.0)
+                ? String.format(java.util.Locale.US, "https://www.google.com/maps/dir/?api=1&destination=%.6f,%.6f", hospital.getLatitude(), hospital.getLongitude())
+                : "https://www.google.com/maps/search/?api=1&query=" + (hospital != null ? hospital.getName() : "Hospital");
+
         String confirmation = String.format("""
             🎉 *OPD Consultation Confirmed!*
             
             🏥 *Hospital:* %s
+            📍 *Address:* %s
+            🧭 *Google Maps Directions:* %s
             👨‍⚕️ *Doctor:* %s (%s)
             🎯 *Department:* %s
             🚪 *OPD Room:* %s
@@ -1014,6 +1089,8 @@ public class WhatsAppWebhookController {
             _💡 Note: When you arrive, receptionist or doctor will scan the START QR code on your slip to begin consultation._
             """,
                 hospital.getName(),
+                (hospital.getAddress() != null && !hospital.getAddress().isBlank()) ? hospital.getAddress().trim() : "Hospital Campus",
+                directionsUrl,
                 doctor.getName(),
                 doctor.getQualification() != null ? doctor.getQualification() : doctor.getDepartment(),
                 doctor.getDepartment(),
