@@ -929,14 +929,14 @@
                     `;
                     showToast('Patient checked in successfully!');
                 } else {
+                    const errMsg = data.message || 'This appointment slip does not belong to this hospital.';
                     resultDiv.innerHTML = `
-                        <div style="text-align: center; color: #ef4444; padding: 1.5rem; background: #fef2f2; border: 2px dashed #f87171; border-radius: 12px;">
-                            <div style="font-size: 3rem; margin-bottom: 0.5rem;">🚫</div>
-                            <h3 style="color: #991b1b; font-weight: bold; margin-bottom: 0.5rem;">Cross-Hospital Scan Blocked</h3>
-                            <p style="font-size: 0.95rem; color: #b91c1c; line-height: 1.4;">${data.message || 'Invalid QR code or token.'}</p>
+                        <div style="text-align: center; color: #ef4444; padding: 1.25rem; background: #fef2f2; border: 2px dashed #f87171; border-radius: 12px;">
+                            <div style="font-size: 2.2rem; margin-bottom: 0.35rem;">🚫</div>
+                            <p style="font-size: 1rem; font-weight: 600; color: #991b1b; margin: 0; line-height: 1.4;">${errMsg}</p>
                         </div>
                     `;
-                    showToast('Cross-hospital scan blocked!');
+                    showToast(errMsg);
                 }
             } catch (err) {
                 resultDiv.innerHTML = `

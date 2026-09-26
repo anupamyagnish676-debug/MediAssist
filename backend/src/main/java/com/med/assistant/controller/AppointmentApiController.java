@@ -47,8 +47,7 @@ public class AppointmentApiController {
 
         // 1. Explicit hospitalId passed from client (e.g. manager-portal or receptionist)
         if (targetHospitalId != null && !targetHospitalId.equals(apptHospitalId)) {
-            String apptHospName = appt.getHospital().getName();
-            return String.format("Cross-Hospital Error: This appointment slip belongs to \"%s\". It cannot be scanned, checked in, or processed at this hospital.", apptHospName);
+            return "This appointment slip does not belong to this hospital.";
         }
 
         // 2. Check authenticated manager if present in Spring Security Context
@@ -61,9 +60,7 @@ public class AppointmentApiController {
                     if (user.getRole() == com.med.assistant.model.User.Role.HOSPITAL_MANAGER && user.getHospital() != null) {
                         Long managerHospId = user.getHospital().getId();
                         if (!managerHospId.equals(apptHospitalId)) {
-                            String apptHospName = appt.getHospital().getName();
-                            String managerHospName = user.getHospital().getName();
-                            return String.format("Unauthorized: This appointment belongs to \"%s\". You are currently logged in under \"%s\". Action blocked.", apptHospName, managerHospName);
+                            return "This appointment slip does not belong to this hospital.";
                         }
                     }
                 }
