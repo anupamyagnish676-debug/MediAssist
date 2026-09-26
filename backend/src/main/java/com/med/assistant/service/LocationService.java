@@ -118,27 +118,15 @@ public class LocationService {
      * Guarantees the patient is never presented with an empty or broken list.
      */
     public List<NearbyHospitalResult> findLocalHospitalsWithSmartFallback(double userLat, double userLon, String department) {
-        // Tier 1: Matching department within 30 km
-        List<NearbyHospitalResult> res = findLocalHospitalsByDepartment(userLat, userLon, 30.0, department);
+        // Tier 1: Matching department within 35 km
+        List<NearbyHospitalResult> res = findLocalHospitalsByDepartment(userLat, userLon, 35.0, department);
         if (!res.isEmpty()) return res;
 
-        // Tier 2: Any partner hospital within 30 km (shows nearby clinics even if different department)
-        res = findNearbyHospitals(userLat, userLon, 30.0);
+        // Tier 2: Any partner hospital within 35 km (shows nearby clinics even if different department)
+        res = findNearbyHospitals(userLat, userLon, 35.0);
         if (!res.isEmpty()) return res;
 
-        // Tier 3: Matching department within 60 km
-        res = findLocalHospitalsByDepartment(userLat, userLon, 60.0, department);
-        if (!res.isEmpty()) return res;
-
-        // Tier 4: Any partner hospital within 60 km
-        res = findNearbyHospitals(userLat, userLon, 60.0);
-        if (!res.isEmpty()) return res;
-
-        // Tier 5: Regional partner hospital within 90 km
-        res = findNearbyHospitals(userLat, userLon, 90.0);
-        if (!res.isEmpty()) return res;
-
-        // Do not return nationwide hospitals 1000+ km away as local clinics
+        // Never return distant clinics (60+ km or nationwide) as nearby local partner clinics
         return List.of();
     }
 
