@@ -415,6 +415,18 @@
             border-color: rgba(245, 158, 11, 0.3);
         }
 
+        .btn-calendar-intent {
+            background: rgba(34, 197, 94, 0.12);
+            color: #4ade80;
+            border-color: rgba(34, 197, 94, 0.3);
+            text-decoration: none;
+        }
+
+        .btn-calendar-intent:hover {
+            background: rgba(34, 197, 94, 0.22);
+            border-color: rgba(34, 197, 94, 0.5);
+        }
+
         /* Empty State */
         .empty-state {
             text-align: center;
@@ -502,20 +514,28 @@
             </p>
 
             <div class="action-grid">
-                <!-- 1-Tap Android Clock Batch -->
-                <button class="btn btn-primary" onclick="setFirstClockAlarm()">
-                    <span>⏰</span> Set in Clock App
+                <!-- 1-Tap Direct Google Calendar App / Web -->
+                <button class="btn btn-primary" onclick="openGoogleCalendar()">
+                    <span>📅</span> Add to Google Calendar
                 </button>
 
-                <!-- 1-Tap .ics Calendar Sync -->
-                <a id="ics-download-link" href="#" class="btn btn-success">
-                    <span>📅</span> Add to Calendar
+                <!-- 1-Tap Android Clock Batch -->
+                <button class="btn btn-success" onclick="setFirstClockAlarm()">
+                    <span>⏰</span> Set in Phone Clock
+                </button>
+
+                <!-- 1-Tap .ics Calendar File Download -->
+                <a id="ics-download-link" href="#" download="medication_alarms.ics" class="btn btn-clock-intent">
+                    <span>📥</span> Download .ics File
                 </a>
 
                 <!-- Test Real Audio Ringtone -->
-                <button class="btn btn-test-alarm btn-full" onclick="testRealAlarmAudio()">
-                    <span>🔊</span> Test Real Audio Alarm & Vibrate
+                <button class="btn btn-test-alarm" onclick="testRealAlarmAudio()">
+                    <span>🔊</span> Test Alarm Sound
                 </button>
+            </div>
+            <div style="margin-top: 12px; font-size: 0.76rem; color: #94a3b8; line-height: 1.4; background: rgba(15, 23, 42, 0.6); padding: 8px 12px; border-radius: 8px; border-left: 3px solid #38bdf8;">
+                💡 <strong>Google Calendar Notice:</strong> If clicking .ics directly said <em>"unable to launch event"</em>, tap <strong>[Add to Google Calendar]</strong> above or tap <strong>[Set in Phone Clock]</strong> to open your phone's native Clock alarm app!
             </div>
         </div>
 
@@ -616,7 +636,11 @@
                         <div class="med-actions">
                             <!-- Direct Android Clock Intent -->
                             <a href="${a.androidAlarmIntentUrl}" class="btn-sm btn-clock-intent" title="Open native Clock app with alarm pre-filled">
-                                <span>⏰</span> Add to Phone Clock
+                                <span>⏰</span> Phone Clock
+                            </a>
+                            <!-- Direct Google Calendar Template Link (1-tap) -->
+                            <a href="${a.googleCalendarUrl}" target="_blank" class="btn-sm btn-calendar-intent" title="Add this alarm to Google Calendar">
+                                <span>📅</span> Google Cal
                             </a>
                             <button class="btn-sm btn-taken-action" onclick="markTaken(${a.id})">
                                 <span>✅</span> Taken
@@ -639,6 +663,24 @@
             } else {
                 showToast("No active alarms to set in Clock.");
             }
+        }
+
+        // 1-Tap add ALL alarms to Google Calendar (one tab per medicine)
+        function openGoogleCalendar() {
+            if (currentAlarms.length === 0) {
+                showToast("No active alarms. Upload prescription on WhatsApp first.");
+                return;
+            }
+            showToast(`Opening Google Calendar for ${currentAlarms.length} medicine(s)...`);
+            // Open each alarm's Google Calendar template URL in a new tab
+            currentAlarms.forEach((alarm, idx) => {
+                if (alarm.googleCalendarUrl) {
+                    // Slight delay between tabs to avoid popup blocker
+                    setTimeout(() => {
+                        window.open(alarm.googleCalendarUrl, '_blank');
+                    }, idx * 400);
+                }
+            });
         }
 
         // Web Audio & Vibration Alarm Synthesizer (Realistic Hospital / Mobile Alarm Chime)
