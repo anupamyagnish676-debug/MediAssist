@@ -269,17 +269,19 @@ public class GeminiAiService {
                     
                     TASKS:
                     1. Read the doctor's handwriting or printed text carefully.
-                    2. Identify doctor/hospital details, patient name, and diagnosis/complaints (e.g. Anxiety, Gastric, BP).
-                    3. Extract EVERY prescribed medicine with its form, name and strength (e.g. 'Cap. Rozad', 'Tab. Ambulax', 'Tab. Petril Plus', 'Tab. Placida', 'Tab. Esojet 40').
-                    4. Extract dosage instructions and frequency (e.g. '1 OD AC 7 AM', '1 BD', '1 OD HS', '1 OD 6 PM').
+                    2. Identify doctor/hospital details, patient name, and diagnosis/complaints if legible.
+                    3. Extract EVERY prescribed medicine with its form, name and strength (e.g. 'Pantocid 40mg', 'Metformin 500mg', 'Cap. Rozad', 'Tab. Ambulax', 'Paracetamol 650mg').
+                    4. Extract exact dosage instructions and relation to meals (e.g. '1 Tablet before breakfast (Empty stomach)', '1 Tablet after dinner', '1 Tablet post-lunch', '1 Tablet at bedtime').
                     5. Deduce specific daily reminder times (24-hour format HH:mm, IST):
-                       - Explicit times written on prescription: "7 AM" -> "07:00", "6 PM" -> "18:00"
-                       - OD AC / Before Breakfast / Empty Stomach -> "07:00"
-                       - OD (Once Daily / Morning) -> "08:00"
-                       - BD / Twice Daily -> ["08:00", "20:00"]
-                       - TDS / Thrice Daily -> ["08:00", "14:00", "20:00"]
-                       - HS / Bedtime / Night -> "21:30"
-                       - Afternoon / Post Lunch -> "13:30"
+                       - Explicit times on slip: e.g. "7 AM" -> "07:00", "9 PM" -> "21:00"
+                       - Before Breakfast / Empty Stomach / OD AC -> "07:30"
+                       - After Breakfast / Morning / OD PC -> "08:30"
+                       - Post Lunch / Afternoon -> "13:30"
+                       - Evening -> "18:00"
+                       - After Dinner / Night / Post Dinner -> "21:00"
+                       - Bedtime / HS -> "22:00"
+                       - Twice daily (BD / 1-0-1) -> ["08:30", "21:00"]
+                       - Thrice daily (TDS / 1-1-1) -> ["08:30", "13:30", "21:00"]
                     
                     OUTPUT FORMAT:
                     Respond ONLY with a valid JSON object (no markdown, no backticks, no comments) matching:
@@ -288,8 +290,8 @@ public class GeminiAiService {
                       "medications": [
                         {
                           "name": "Medication Name and Strength",
-                          "dosage": "Dosage frequency and instructions",
-                          "times": ["07:00", "18:00"]
+                          "dosage": "Dosage instructions and meal timing (e.g. 1 Tablet before breakfast)",
+                          "times": ["07:30", "21:00"]
                         }
                       ]
                     }
@@ -504,9 +506,9 @@ public class GeminiAiService {
 
     public PrescriptionAnalysisResult generateFallbackPrescriptionResult(String fileName) {
         List<PrescribedMedication> meds = List.of(
-                new PrescribedMedication("Paracetamol 650mg", "1 tablet after meals (Twice daily)", List.of("08:00", "20:00")),
-                new PrescribedMedication("Pantoprazole 40mg", "1 tablet on empty stomach (Before breakfast)", List.of("07:30")),
-                new PrescribedMedication("Multivitamin / Zinc", "1 capsule after lunch (Once daily)", List.of("13:30"))
+                new PrescribedMedication("Pantocid 40mg", "1 Tablet before breakfast (Empty stomach)", List.of("07:30")),
+                new PrescribedMedication("Metformin 500mg", "1 Tablet after dinner", List.of("21:00")),
+                new PrescribedMedication("Paracetamol 650mg", "1 Tablet after lunch (Post meals)", List.of("13:30"))
         );
         return new PrescriptionAnalysisResult(
                 "Prescription scanned. Clinical dosage schedule generated based on standard outpatient prescription guidelines.",

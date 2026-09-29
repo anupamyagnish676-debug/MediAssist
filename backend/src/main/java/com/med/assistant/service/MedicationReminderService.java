@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -241,5 +242,135 @@ public class MedicationReminderService {
         MedicationReminder sample = createReminder(phone, "Cap. Rozad", "1 OD AC 7 AM", "07:00");
         dispatchGroupedReminderAlert(phone, List.of(sample));
         return true;
+    }
+
+    public record AlarmDetail(
+            Long id,
+            String medicineName,
+            String dosageInstruction,
+            String reminderTime,
+            int hour,
+            int minute,
+            String formattedTime12h,
+            String androidAlarmIntentUrl,
+            String status
+    ) {}
+
+    /**
+     * Generates a standard RFC 5545 iCalendar (.ics) file with VALARM triggers
+     * to import recurring audio alarms directly into Android Clock/Calendar & Apple Calendar.
+     */
+    public String generateIcsCalendar(String patientPhone) {
+        List<MedicationReminder> reminders = getActiveReminders(patientPhone);
+        StringBuilder ics = new StringBuilder();
+        ics.append("BEGIN:VCALENDAR\r\n");
+        ics.append("VERSION:2.0\r\n");
+        ics.append("PRODID:-//MediAssist Healthcare//Prescription Medication Alarms v1.0//EN\r\n");
+        ics.append("CALSCALE:GREGORIAN\r\n");
+        ics.append("METHOD:PUBLISH\r\n");
+        ics.append("X-WR-CALNAME:MediAssist Medication Alarms\r\n");
+        ics.append("X-WR-TIMEZONE:Asia/Kolkata\r\n");
+
+        LocalDate today = LocalDate.now();
+        String datePrefix = today.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+        for (MedicationReminder r : reminders) {
+            String time = (r.getReminderTime() != null && !r.getReminderTime().isBlank()) ? r.getReminderTime() : "08:00";
+            String[] timeParts = time.split(":");
+            int hour = 8;
+            int min = 0;
+            try {
+                hour = Integer.parseInt(timeParts[0]);
+                min = timeParts.length > 1 ? Integer.parseInt(timeParts[1]) : 0;
+            } catch (Exception ignored) {}
+
+            String dtStart = String.format("%sT%02d%02d00", datePrefix, hour, min);
+            String medName = r.getMedicineName() != null ? r.getMedicineName() : "Prescribed Medication";
+            String dosage = r.getDosageInstruction() != null ? r.getDosageInstruction() : "As directed by doctor";
+
+            ics.append("BEGIN:VEVENT\r\n");
+            ics.append("UID:med-alarm-").append(r.getId()).append("-").append(System.currentTimeMillis()).append("@mediassist.com\r\n");
+            ics.append("SUMMARY:💊 Take ").append(escapeIcs(medName)).append("\r\n");
+            ics.append("DESCRIPTION:Dosage: ").append(escapeIcs(dosage)).append("\\nScheduled by MediAssist Vision Prescription-to-Alarm.\\nConfirm taken via WhatsApp.\r\n");
+            ics.append("DTSTART:").append(dtStart).append("\r\n");
+            ics.append("DURATION:PT10M\r\n");
+            ics.append("RRULE:FREQ=DAILY\r\n");
+
+            // High-priority audio alarm
+            ics.append("BEGIN:VALARM\r\n");
+            ics.append("TRIGGER:-PT0M\r\n");
+            ics.append("ACTION:AUDIO\r\n");
+            ics.append("ATTACH;VALUE=URI:Basso\r\n");
+            ics.append("DESCRIPTION:⏰ MEDICATION ALARM: Time to take ").append(escapeIcs(medName)).append("\r\n");
+            ics.append("END:VALARM\r\n");
+
+            // Pop-up notification alert
+            ics.append("BEGIN:VALARM\r\n");
+            ics.append("TRIGGER:-PT0M\r\n");
+            ics.append("ACTION:DISPLAY\r\n");
+            ics.append("DESCRIPTION:⏰ MEDICATION ALARM: Time to take ").append(escapeIcs(medName)).append(" (").append(escapeIcs(dosage)).append(")\r\n");
+            ics.append("END:VALARM\r\n");
+
+            ics.append("END:VEVENT\r\n");
+        }
+
+        ics.append("END:VCALENDAR\r\n");
+        return ics.toString();
+    }
+
+    private String escapeIcs(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace(";", "\\;")
+                .replace(",", "\\,")
+                .replace("\n", "\\n");
+    }
+
+    /**
+     * Returns rich alarm data for mobile companion page including native Android clock intents.
+     */
+    public List<AlarmDetail> getAlarmDetails(String phone) {
+        List<MedicationReminder> reminders = getActiveReminders(phone);
+        List<AlarmDetail> details = new ArrayList<>();
+        for (MedicationReminder r : reminders) {
+            String time = (r.getReminderTime() != null && !r.getReminderTime().isBlank()) ? r.getReminderTime() : "08:00";
+            String[] timeParts = time.split(":");
+            int hour = 8;
+            int min = 0;
+            try {
+                hour = Integer.parseInt(timeParts[0]);
+                min = timeParts.length > 1 ? Integer.parseInt(timeParts[1]) : 0;
+            } catch (Exception ignored) {}
+
+            int displayHour = (hour == 0 || hour == 12) ? 12 : hour % 12;
+            String ampm = hour < 12 ? "AM" : "PM";
+            String formatted12h = String.format("%02d:%02d %s", displayHour, min, ampm);
+
+            String msg = "Take " + (r.getMedicineName() != null ? r.getMedicineName() : "Medicine");
+            String encodedMsg;
+            try {
+                encodedMsg = java.net.URLEncoder.encode(msg, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+            } catch (Exception e) {
+                encodedMsg = "Medication";
+            }
+
+            String androidIntent = String.format(
+                    "intent:#Intent;action=android.intent.action.SET_ALARM;S.android.intent.extra.MESSAGE=%s;i.android.intent.extra.HOUR=%d;i.android.intent.extra.MINUTES=%d;B.android.intent.extra.SKIP_UI=false;end",
+                    encodedMsg, hour, min
+            );
+
+            details.add(new AlarmDetail(
+                    r.getId(),
+                    r.getMedicineName(),
+                    r.getDosageInstruction(),
+                    r.getReminderTime(),
+                    hour,
+                    min,
+                    formatted12h,
+                    androidIntent,
+                    r.getStatus() != null ? r.getStatus().name() : "PENDING"
+            ));
+        }
+        return details;
     }
 }

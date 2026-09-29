@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Prescription Alarm Scheduler | MediAssist</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0284c7;
+            --primary-dark: #0369a1;
+            --primary-light: #e0f2fe;
+            --primary-glow: rgba(2, 132, 199, 0.35);
+            --accent: #10b981;
+            --accent-glow: rgba(16, 185, 129, 0.3);
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --bg: #0b1120;
+            --card-bg: #131d32;
+            --card-border: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding-bottom: 40px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            padding: 16px;
+        }
+
+        /* Top Header */
+        .app-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            margin-bottom: 18px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .brand-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-logo {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #0284c7, #38bdf8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 4px 12px var(--primary-glow);
+        }
+
+        .brand-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.2;
+        }
+
+        .brand-sub {
+            font-size: 0.75rem;
+            color: #38bdf8;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .phone-chip {
+            background: #1e293b;
+            border: 1px solid #334155;
+            padding: 6px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: #cbd5e1;
+        }
+
+        /* Hero Banner */
+        .hero-banner {
+            background: linear-gradient(145deg, rgba(2, 132, 199, 0.15) 0%, rgba(16, 185, 129, 0.1) 100%);
+            border: 1px solid rgba(2, 132, 199, 0.3);
+            border-radius: var(--radius-lg);
+            padding: 18px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(2, 132, 199, 0.25);
+            color: #7dd3fc;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .hero-title {
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: 6px;
+            line-height: 1.25;
+        }
+
+        .hero-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.45;
+            margin-bottom: 16px;
+        }
+
+        /* Action Buttons Grid */
+        .action-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 14px;
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            border: none;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #0284c7, #0369a1);
+            color: #ffffff;
+            box-shadow: 0 4px 14px var(--primary-glow);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.97);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #ffffff;
+            box-shadow: 0 4px 14px var(--accent-glow);
+        }
+
+        .btn-success:active {
+            transform: scale(0.97);
+        }
+
+        .btn-full {
+            grid-column: span 2;
+        }
+
+        .btn-test-alarm {
+            background: linear-gradient(135deg, #e11d48, #be123c);
+            color: #ffffff;
+            box-shadow: 0 4px 14px rgba(225, 29, 72, 0.4);
+            animation: pulse-ring 2.5s infinite;
+        }
+
+        @keyframes pulse-ring {
+            0% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.6); }
+            70% { box-shadow: 0 0 0 10px rgba(225, 29, 72, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(225, 29, 72, 0); }
+        }
+
+        /* Active Alarm Ringing Overlay */
+        .alarm-ringing-card {
+            display: none;
+            background: linear-gradient(135deg, #be123c 0%, #881337 100%);
+            border: 2px solid #fda4af;
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            box-shadow: 0 0 30px rgba(244, 63, 94, 0.6);
+            animation: ring-shake 0.4s infinite alternate;
+        }
+
+        @keyframes ring-shake {
+            0% { transform: translateY(-2px); }
+            100% { transform: translateY(2px); }
+        }
+
+        .alarm-ringing-card.active {
+            display: block;
+        }
+
+        .ringing-icon {
+            font-size: 42px;
+            margin-bottom: 6px;
+            display: inline-block;
+            animation: bell-swing 0.5s infinite alternate ease-in-out;
+        }
+
+        @keyframes bell-swing {
+            0% { transform: rotate(-15deg); }
+            100% { transform: rotate(15deg); }
+        }
+
+        .ringing-title {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: 4px;
+        }
+
+        .ringing-subtitle {
+            font-size: 0.85rem;
+            color: #ffe4e6;
+            margin-bottom: 16px;
+        }
+
+        .btn-stop-ringing {
+            background: #ffffff;
+            color: #be123c;
+            padding: 10px 24px;
+            border-radius: 30px;
+            font-weight: 800;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Section Header */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            padding: 0 4px;
+        }
+
+        .section-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-count {
+            background: #1e293b;
+            color: #38bdf8;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.72rem;
+            font-weight: 700;
+        }
+
+        /* Medication Cards List */
+        .med-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .med-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            transition: border-color 0.2s;
+            position: relative;
+        }
+
+        .med-card:hover {
+            border-color: #334155;
+        }
+
+        .med-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .med-name-group {
+            flex: 1;
+        }
+
+        .med-name {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 2px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .med-dose {
+            font-size: 0.8rem;
+            color: #94a3b8;
+            line-height: 1.35;
+        }
+
+        .time-badge {
+            background: linear-gradient(135deg, rgba(2, 132, 199, 0.2), rgba(56, 189, 248, 0.1));
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            color: #38bdf8;
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            margin-top: 6px;
+            text-transform: uppercase;
+        }
+
+        .status-pending { background: rgba(56, 189, 248, 0.15); color: #38bdf8; }
+        .status-taken { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+        .status-snoozed { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+        .med-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            flex-wrap: wrap;
+        }
+
+        .btn-sm {
+            padding: 7px 12px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            transition: all 0.15s;
+        }
+
+        .btn-clock-intent {
+            background: #1e293b;
+            color: #f1f5f9;
+            border-color: #334155;
+            flex: 1;
+            justify-content: center;
+        }
+
+        .btn-clock-intent:hover {
+            background: #334155;
+            border-color: #475569;
+        }
+
+        .btn-taken-action {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-snooze-action {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fbbf24;
+            border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            background: var(--card-bg);
+            border: 1px dashed var(--card-border);
+            border-radius: var(--radius-lg);
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            font-size: 40px;
+            margin-bottom: 12px;
+        }
+
+        /* Floating WhatsApp return */
+        .return-whatsapp-box {
+            background: #0f172a;
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 14px;
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .whatsapp-link {
+            color: #25d366;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: #1e293b;
+            color: #ffffff;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            border: 1px solid #334155;
+            z-index: 1000;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Top App Header -->
+        <header class="app-header">
+            <div class="brand-info">
+                <div class="brand-logo">💊</div>
+                <div>
+                    <div class="brand-title">MediAssist Alarms</div>
+                    <div class="brand-sub">AI Vision Auto-Scheduler</div>
+                </div>
+            </div>
+            <div class="phone-chip" id="user-phone">+91...</div>
+        </header>
+
+        <!-- Ringing Active Banner (Shows during real alarm sound test) -->
+        <div id="alarm-banner" class="alarm-ringing-card">
+            <div class="ringing-icon">⏰</div>
+            <div class="ringing-title">MEDICATION ALARM ACTIVE!</div>
+            <div class="ringing-subtitle" id="ringing-med-name">Time to take your scheduled dose</div>
+            <button class="btn-stop-ringing" onclick="stopAlarmAudio()">⏹️ Dismiss Alarm</button>
+        </div>
+
+        <!-- Hero Control Banner -->
+        <div class="hero-banner">
+            <div class="hero-badge">⚡ Real Mobile Alarm Sync</div>
+            <h1 class="hero-title">Prescription-to-Alarm</h1>
+            <p class="hero-desc">
+                Your prescription was extracted with Gemini Vision. Trigger real audio alarms & vibration in your phone's native Clock or Calendar:
+            </p>
+
+            <div class="action-grid">
+                <!-- 1-Tap Android Clock Batch -->
+                <button class="btn btn-primary" onclick="setFirstClockAlarm()">
+                    <span>⏰</span> Set in Clock App
+                </button>
+
+                <!-- 1-Tap .ics Calendar Sync -->
+                <a id="ics-download-link" href="#" class="btn btn-success">
+                    <span>📅</span> Add to Calendar
+                </a>
+
+                <!-- Test Real Audio Ringtone -->
+                <button class="btn btn-test-alarm btn-full" onclick="testRealAlarmAudio()">
+                    <span>🔊</span> Test Real Audio Alarm & Vibrate
+                </button>
+            </div>
+        </div>
+
+        <!-- Section: Scheduled Medication Doses -->
+        <div class="section-header">
+            <div class="section-title">
+                <span>📋</span> Scheduled Medication Alarms
+            </div>
+            <span class="section-count" id="alarm-count">0 Alarms</span>
+        </div>
+
+        <!-- Medications List Container -->
+        <div id="med-list-container" class="med-list">
+            <!-- Dynamically Rendered -->
+            <div class="empty-state">
+                <div class="empty-icon">⏳</div>
+                <div>Loading prescription alarm schedule...</div>
+            </div>
+        </div>
+
+        <!-- Bottom Return Box -->
+        <div class="return-whatsapp-box">
+            🔔 <strong>Dual Alert Protection:</strong> In addition to phone clock alarms, MediAssist sends live WhatsApp interactive cards with <strong>[Taken]</strong> and <strong>[Snooze]</strong> buttons at every dose time.
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">Action updated!</div>
+
+    <script>
+        let currentAlarms = [];
+        let audioCtx = null;
+        let isAlarmPlaying = false;
+        let alarmInterval = null;
+
+        // Parse phone from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        let patientPhone = urlParams.get('phone') || '+919876543210';
+        document.getElementById('user-phone').innerText = patientPhone;
+
+        const icsLink = document.getElementById('ics-download-link');
+        icsLink.href = `/api/v1/reminders/calendar.ics?phone=${encodeURIComponent(patientPhone)}`;
+
+        // Fetch Alarms Data
+        async function loadAlarms() {
+            try {
+                const res = await fetch(`/api/v1/reminders/alarms-data?phone=${encodeURIComponent(patientPhone)}`);
+                if (!res.ok) throw new Error("Failed to load alarms");
+                const data = await res.json();
+                currentAlarms = data.alarms || [];
+                renderAlarms(currentAlarms);
+            } catch (err) {
+                console.error("Error loading alarms:", err);
+                document.getElementById('med-list-container').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">⚠️</div>
+                        <div>Could not connect to reminder service.</div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderAlarms(alarms) {
+            const container = document.getElementById('med-list-container');
+            document.getElementById('alarm-count').innerText = `${alarms.length} Active`;
+
+            if (alarms.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">💊</div>
+                        <div style="font-weight:700; color:#fff; margin-bottom:4px;">No Active Alarms</div>
+                        <div>Send a photo of your prescription on WhatsApp to automatically schedule your daily doses!</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = alarms.map((a, idx) => {
+                const statusClass = a.status === 'TAKEN' ? 'status-taken' : (a.status === 'SNOOZED' ? 'status-snoozed' : 'status-pending');
+                const statusLabel = a.status === 'TAKEN' ? '✅ Dose Taken' : (a.status === 'SNOOZED' ? '⏰ Snoozed' : '⏳ Active Alarm');
+                return `
+                    <div class="med-card" id="card-${a.id}">
+                        <div class="med-top">
+                            <div class="med-name-group">
+                                <div class="med-name">
+                                    <span>💊</span> ${escapeHtml(a.medicineName)}
+                                </div>
+                                <div class="med-dose">
+                                    ${escapeHtml(a.dosageInstruction || 'Daily dose as prescribed')}
+                                </div>
+                                <span class="status-badge ${statusClass}">${statusLabel}</span>
+                            </div>
+                            <div class="time-badge">
+                                ${a.formattedTime12h || a.reminderTime}
+                            </div>
+                        </div>
+
+                        <div class="med-actions">
+                            <!-- Direct Android Clock Intent -->
+                            <a href="${a.androidAlarmIntentUrl}" class="btn-sm btn-clock-intent" title="Open native Clock app with alarm pre-filled">
+                                <span>⏰</span> Add to Phone Clock
+                            </a>
+                            <button class="btn-sm btn-taken-action" onclick="markTaken(${a.id})">
+                                <span>✅</span> Taken
+                            </button>
+                            <button class="btn-sm btn-snooze-action" onclick="snoozeAlarm(${a.id}, 15)">
+                                <span>⏰</span> 15m
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 1-Tap set first alarm in Android Clock app
+        function setFirstClockAlarm() {
+            if (currentAlarms.length > 0) {
+                const first = currentAlarms[0];
+                showToast(`Opening Clock app for: ${first.medicineName}`);
+                window.location.href = first.androidAlarmIntentUrl;
+            } else {
+                showToast("No active alarms to set in Clock.");
+            }
+        }
+
+        // Web Audio & Vibration Alarm Synthesizer (Realistic Hospital / Mobile Alarm Chime)
+        function testRealAlarmAudio() {
+            if (isAlarmPlaying) {
+                stopAlarmAudio();
+                return;
+            }
+
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            } catch (e) {
+                console.warn("AudioContext not supported:", e);
+            }
+
+            isAlarmPlaying = true;
+            document.getElementById('alarm-banner').classList.add('active');
+            if (currentAlarms.length > 0) {
+                document.getElementById('ringing-med-name').innerText = `Time for ${currentAlarms[0].medicineName}!`;
+            }
+
+            // Trigger physical phone vibration if supported
+            if ("vibrate" in navigator) {
+                navigator.vibrate([400, 200, 400, 200, 400, 200, 800]);
+            }
+
+            playAlarmBeepPulse();
+            alarmInterval = setInterval(() => {
+                if (!isAlarmPlaying) return;
+                playAlarmBeepPulse();
+                if ("vibrate" in navigator) {
+                    navigator.vibrate([400, 200, 400, 200, 400, 200]);
+                }
+            }, 1800);
+
+            showToast("🔊 Real alarm ringing! Tap Dismiss to stop.");
+        }
+
+        function playAlarmBeepPulse() {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+
+            // Two-tone high priority alarm pulse (880Hz -> 1760Hz)
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(880, now);
+            osc.frequency.setValueAtTime(1760, now + 0.15);
+            osc.frequency.setValueAtTime(880, now + 0.30);
+            osc.frequency.setValueAtTime(1760, now + 0.45);
+
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.7);
+        }
+
+        function stopAlarmAudio() {
+            isAlarmPlaying = false;
+            if (alarmInterval) clearInterval(alarmInterval);
+            if (audioCtx) {
+                audioCtx.close().catch(() => {});
+                audioCtx = null;
+            }
+            if ("vibrate" in navigator) {
+                navigator.vibrate(0);
+            }
+            document.getElementById('alarm-banner').classList.remove('active');
+            showToast("Alarm dismissed.");
+        }
+
+        async function markTaken(id) {
+            try {
+                const res = await fetch('/api/v1/reminders/taken', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reminderIds: [id] })
+                });
+                if (res.ok) {
+                    showToast("✅ Logged dose as taken!");
+                    loadAlarms();
+                }
+            } catch (err) {
+                showToast("Could not update dose.");
+            }
+        }
+
+        async function snoozeAlarm(id, mins) {
+            try {
+                const res = await fetch('/api/v1/reminders/snooze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reminderIds: [id], minutes: mins })
+                });
+                if (res.ok) {
+                    showToast(`⏰ Snoozed for ${mins} minutes!`);
+                    loadAlarms();
+                }
+            } catch (err) {
+                showToast("Could not snooze.");
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2600);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.innerText = text;
+            return div.innerHTML;
+        }
+
+        // Initialize on load
+        loadAlarms();
+    </script>
+</body>
+</html>

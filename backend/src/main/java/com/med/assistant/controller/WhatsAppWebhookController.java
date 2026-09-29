@@ -448,6 +448,17 @@ public class WhatsAppWebhookController {
             } else if ("QUEUE_STATUS".equals(buttonId) || "MY_TOKEN".equals(buttonId)) {
                 handleQueueStatusCheck(fromPhone);
                 return;
+            } else if ("REAL_ALARM_SYNC".equals(buttonId)) {
+                sendRealAlarmInstructions(fromPhone);
+                return;
+            } else if ("CANCEL_ALARMS".equals(buttonId)) {
+                int cancelled = reminderService.cancelAllReminders(fromPhone);
+                if (cancelled > 0) {
+                    whatsAppClient.sendTextMessage(fromPhone, "🛑 *Medication Alarms Cancelled!*\n\nSuccessfully turned off " + cancelled + " active medication alarm(s).");
+                } else {
+                    whatsAppClient.sendTextMessage(fromPhone, "ℹ️ You don't have any active medication alarms scheduled.");
+                }
+                return;
             }
 
             if (buttonId.startsWith("DOC_RATE_")) {
@@ -1236,22 +1247,39 @@ public class WhatsAppWebhookController {
 
             // Build patient-facing response
             StringBuilder reply = new StringBuilder();
-            reply.append("📋 *Prescription Review & Medication Schedule*\n\n");
+            reply.append("⚡ *Instant Prescription-to-Alarm Auto-Scheduler (AI Vision)* 👁️\n\n");
             if (result != null && result.doctorNotes() != null && !result.doctorNotes().isBlank()) {
-                reply.append("🩺 *Clinical Observations / Notes:*\n")
+                reply.append("🩺 *Clinical Notes & Diagnosis:*\n")
                      .append(result.doctorNotes()).append("\n\n");
             }
 
-            reply.append("⏰ *Automated Medication Reminders Set (").append(count).append(" Alarms):*\n");
+            reply.append("⏰ *Scheduled Doses (").append(count).append(" Alarms):*\n");
             for (String summary : reminderSummaries) {
                 reply.append(summary).append("\n");
             }
 
-            reply.append("\n🔔 *How Alarms Work:*\n")
-                 .append("At each scheduled time, you will receive an alert with *[✅ Taken]* and *[⏰ Snooze 15m]* buttons to track your adherence.\n\n")
-                 .append("📁 Saved to your *Report Wardrobe*. Message *'my reminders'* anytime to view your active alarms!");
+            String safePhoneEncoded = java.net.URLEncoder.encode(fromPhone, java.nio.charset.StandardCharsets.UTF_8);
+            String companionUrl = "https://mediassist-1hdl.onrender.com/alarms.html?phone=" + safePhoneEncoded;
+            String icsUrl = "https://mediassist-1hdl.onrender.com/api/v1/reminders/calendar.ics?phone=" + safePhoneEncoded;
 
-            whatsAppClient.sendTextMessage(fromPhone, reply.toString());
+            reply.append("\n🔊 *RING REAL PHONE ALARM (NOT JUST WHATSAPP):*\n")
+                 .append("To trigger physical ringtone alarms & vibration in your mobile Clock/Calendar:\n")
+                 .append("👉 *Open Mobile Alarm Companion:*\n")
+                 .append(companionUrl).append("\n\n")
+                 .append("📅 *Or 1-Tap Import to Device Calendar (.ics):*\n")
+                 .append(icsUrl).append("\n\n")
+                 .append("🔔 _You will also receive automated WhatsApp reminder cards with [✅ Taken] and [⏰ Snooze 15m] buttons at dose times!_");
+
+            List<WhatsAppClientService.ButtonOption> buttons = List.of(
+                    new WhatsAppClientService.ButtonOption("REAL_ALARM_SYNC", "📱 Ring Phone Alarm"),
+                    new WhatsAppClientService.ButtonOption("MY_ALARMS", "💊 My Alarms"),
+                    new WhatsAppClientService.ButtonOption("CANCEL_ALARMS", "🛑 Stop Alarms")
+            );
+
+            boolean sent = whatsAppClient.sendInteractiveButtons(fromPhone, reply.toString(), buttons);
+            if (!sent) {
+                whatsAppClient.sendTextMessage(fromPhone, reply.toString());
+            }
 
         } catch (Exception e) {
             logger.error("Error processing prescription document: {}", e.getMessage(), e);
@@ -1262,6 +1290,31 @@ public class WhatsAppWebhookController {
                 👉 *"Remind me to take [Medicine] at [Time]"*
                 """);
         }
+    }
+
+    private void sendRealAlarmInstructions(String fromPhone) {
+        String safePhoneEncoded = java.net.URLEncoder.encode(fromPhone, java.nio.charset.StandardCharsets.UTF_8);
+        String companionUrl = "https://mediassist-1hdl.onrender.com/alarms.html?phone=" + safePhoneEncoded;
+        String icsUrl = "https://mediassist-1hdl.onrender.com/api/v1/reminders/calendar.ics?phone=" + safePhoneEncoded;
+
+        String msg = """
+            📲 *ACTIVATE REAL PHONE ALARMS* 🔊
+
+            To ensure your mobile physically rings loud audio alarms at every medication time (not just a WhatsApp text):
+
+            1️⃣ *Option 1: Phone Clock & Mobile Alarm Companion*
+            Open your personal alarm hub and tap "Add to Phone Clock" for each medicine:
+            👉 %s
+
+            2️⃣ *Option 2: Import to Google / Apple / Samsung Calendar (.ics)*
+            Tap below to download and import all daily recurring alarms with audio alerts into your phone's calendar:
+            👉 %s
+
+            3️⃣ *WhatsApp Live Alerts:*
+            At each dose time, MediAssist also pings you with [✅ Taken] and [⏰ Snooze] buttons to track your daily adherence!
+            """.formatted(companionUrl, icsUrl);
+
+        whatsAppClient.sendTextMessage(fromPhone, msg);
     }
 
     private void handleAudioVoiceNote(String fromPhone, Map<String, Object> audio) {
@@ -1471,9 +1524,17 @@ public class WhatsAppWebhookController {
                 }
                 sb.append("\n");
             }
-            sb.append("🔔 *How Alarms Work:*\n");
-            sb.append("At each time node, you will receive an alert with *[✅ Taken]*, *[⏰ Snooze 15m]*, and *[⏰ Snooze 30m]* buttons!\n\n");
-            sb.append("💡 *To cancel all alarms*, simply message: *\"Cancel all alarms\"* or *\"Stop alarms\"*");
+            String safePhoneEncoded = java.net.URLEncoder.encode(fromPhone, java.nio.charset.StandardCharsets.UTF_8);
+            String companionUrl = "https://mediassist-1hdl.onrender.com/alarms.html?phone=" + safePhoneEncoded;
+            String icsUrl = "https://mediassist-1hdl.onrender.com/api/v1/reminders/calendar.ics?phone=" + safePhoneEncoded;
+
+            sb.append("📱 *Ring Real Phone Alarms (Clock & Audio):*\n")
+              .append("👉 ").append(companionUrl).append("\n\n")
+              .append("📅 *Import to Phone Calendar (.ics):*\n")
+              .append("👉 ").append(icsUrl).append("\n\n")
+              .append("🔔 *How Alarms Work:*\n")
+              .append("At each time node, you will also receive a WhatsApp alert card with *[✅ Taken]* and *[⏰ Snooze]* buttons!\n\n")
+              .append("💡 *To cancel all alarms*, simply message: *\"Cancel all alarms\"* or *\"Stop alarms\"*");
             whatsAppClient.sendTextMessage(fromPhone, sb.toString());
         }
     }

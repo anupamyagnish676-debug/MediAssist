@@ -42,6 +42,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/simulator/**").permitAll()
                 .requestMatchers("/api/v1/appointments/**").permitAll()
                 .requestMatchers("/api/v1/hospitals/**").permitAll()
+                .requestMatchers("/api/v1/reminders/**").permitAll()
 
                 // Super Admin Scoped APIs
                 .requestMatchers("/api/v1/admin/**").hasRole("SUPER_ADMIN")

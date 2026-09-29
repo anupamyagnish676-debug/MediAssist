@@ -47,6 +47,55 @@ public class MedicationReminderApiController {
     ) {}
 
     /**
+     * Download or import iCalendar (.ics) with VALARM audio triggers
+     * for Google Calendar, Apple Calendar, and Samsung Calendar.
+     */
+    @GetMapping(value = "/calendar.ics", produces = "text/calendar;charset=UTF-8")
+    public ResponseEntity<String> getIcsCalendar(
+            @RequestParam(name = "phone", defaultValue = "+919876543210") String phone) {
+        try {
+            String ics = reminderService.generateIcsCalendar(phone);
+            return ResponseEntity.ok()
+                    .header("Content-Disposition", "inline; filename=\"medication_alarms.ics\"")
+                    .body(ics);
+        } catch (Exception e) {
+            logger.error("Error generating ICS calendar for {}: {}", phone, e.getMessage(), e);
+            return ResponseEntity.internalServerError().body("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n");
+        }
+    }
+
+    /**
+     * Mobile companion redirect: opens the responsive mobile alarm control center.
+     */
+    @GetMapping("/sync")
+    public org.springframework.web.servlet.view.RedirectView syncAlarmsRedirect(
+            @RequestParam(name = "phone", defaultValue = "+919876543210") String phone) {
+        String safePhone = phone != null ? phone.trim() : "";
+        String encodedPhone = java.net.URLEncoder.encode(safePhone, java.nio.charset.StandardCharsets.UTF_8);
+        return new org.springframework.web.servlet.view.RedirectView("/alarms.html?phone=" + encodedPhone);
+    }
+
+    /**
+     * Rich alarms data with Android clock intent URLs and 12-hour formatted times.
+     */
+    @GetMapping("/alarms-data")
+    public ResponseEntity<?> getAlarmsData(
+            @RequestParam(name = "phone", defaultValue = "+919876543210") String phone) {
+        try {
+            List<MedicationReminderService.AlarmDetail> alarms = reminderService.getAlarmDetails(phone);
+            Map<String, Object> resp = new HashMap<>();
+            resp.put("phone", phone);
+            resp.put("count", alarms.size());
+            resp.put("alarms", alarms);
+            resp.put("icsUrl", "/api/v1/reminders/calendar.ics?phone=" + java.net.URLEncoder.encode(phone, java.nio.charset.StandardCharsets.UTF_8));
+            return ResponseEntity.ok(resp);
+        } catch (Exception e) {
+            logger.error("Error retrieving alarms data for {}: {}", phone, e.getMessage(), e);
+            return ResponseEntity.ok(Map.of("phone", phone, "count", 0, "alarms", Collections.emptyList()));
+        }
+    }
+
+    /**
      * Retrieve all active reminders for a patient phone number.
      */
     @GetMapping
