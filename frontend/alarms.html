@@ -639,9 +639,9 @@
                                 <span>⏰</span> Phone Clock
                             </a>
                             <!-- Direct Google Calendar Template Link (1-tap) -->
-                            <a href="${a.googleCalendarUrl}" target="_blank" class="btn-sm btn-calendar-intent" title="Add this alarm to Google Calendar">
+                            <button class="btn-sm btn-calendar-intent" onclick="openSingleCalendar(${a.id})" title="Add this alarm to Google Calendar">
                                 <span>📅</span> Google Cal
-                            </a>
+                            </button>
                             <button class="btn-sm btn-taken-action" onclick="markTaken(${a.id})">
                                 <span>✅</span> Taken
                             </button>
@@ -665,22 +665,61 @@
             }
         }
 
-        // 1-Tap add ALL alarms to Google Calendar (one tab per medicine)
+        // ---------------------------------------------------------------
+        // Smart Calendar Opener - forces Google Calendar APP on Android,
+        // falls back to web URL on iOS/desktop
+        // ---------------------------------------------------------------
+        function openCalendarUrl(url) {
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            if (isAndroid) {
+                // Android Intent URL forces Chrome to open Google Calendar APP
+                // package=com.google.android.calendar means it opens the installed app
+                const intentUrl = 'intent://' + url.replace('https://', '') +
+                    '#Intent;scheme=https;package=com.google.android.calendar;' +
+                    'S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+                window.location.href = intentUrl;
+            } else {
+                window.open(url, '_blank');
+            }
+        }
+
+        // Open Google Calendar for a single medicine card by alarm ID
+        function openSingleCalendar(id) {
+            const alarm = currentAlarms.find(a => a.id === id);
+            if (!alarm || !alarm.googleCalendarUrl) {
+                showToast("Alarm not found, please reload.");
+                return;
+            }
+            showToast("📅 Opening Google Calendar for " + alarm.medicineName + "...");
+            openCalendarUrl(alarm.googleCalendarUrl);
+        }
+
+        // Hero button: add ALL alarms to Google Calendar
         function openGoogleCalendar() {
             if (currentAlarms.length === 0) {
                 showToast("No active alarms. Upload prescription on WhatsApp first.");
                 return;
             }
-            showToast(`Opening Google Calendar for ${currentAlarms.length} medicine(s)...`);
-            // Open each alarm's Google Calendar template URL in a new tab
-            currentAlarms.forEach((alarm, idx) => {
-                if (alarm.googleCalendarUrl) {
-                    // Slight delay between tabs to avoid popup blocker
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            showToast("📅 Opening Google Calendar for " + currentAlarms.length + " medicine(s)...");
+            if (isAndroid) {
+                // Android: open first alarm in Calendar app
+                openCalendarUrl(currentAlarms[0].googleCalendarUrl);
+                if (currentAlarms.length > 1) {
                     setTimeout(() => {
-                        window.open(alarm.googleCalendarUrl, '_blank');
-                    }, idx * 400);
+                        showToast("Tap 📅 Google Cal on each card for the other medicine(s).");
+                    }, 1500);
                 }
-            });
+            } else {
+                // Desktop/iOS: open all in tabs with stagger
+                currentAlarms.forEach((alarm, idx) => {
+                    if (alarm.googleCalendarUrl) {
+                        setTimeout(() => {
+                            window.open(alarm.googleCalendarUrl, '_blank');
+                        }, idx * 500);
+                    }
+                });
+            }
         }
 
         // Web Audio & Vibration Alarm Synthesizer (Realistic Hospital / Mobile Alarm Chime)
