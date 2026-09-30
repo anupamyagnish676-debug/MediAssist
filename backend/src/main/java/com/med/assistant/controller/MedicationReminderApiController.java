@@ -56,12 +56,27 @@ public class MedicationReminderApiController {
         try {
             String ics = reminderService.generateIcsCalendar(phone);
             return ResponseEntity.ok()
-                    .header("Content-Disposition", "inline; filename=\"medication_alarms.ics\"")
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"medication_alarms.ics\"")
+                    .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "text/calendar; charset=UTF-8")
+                    .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
                     .body(ics);
         } catch (Exception e) {
             logger.error("Error generating ICS calendar for {}: {}", phone, e.getMessage(), e);
             return ResponseEntity.internalServerError().body("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n");
         }
+    }
+
+    /**
+     * Direct 1-click Google Calendar web/app redirect.
+     */
+    @GetMapping("/google-calendar")
+    public org.springframework.web.servlet.view.RedirectView redirectToGoogleCalendar(
+            @RequestParam(name = "phone", defaultValue = "+919876543210") String phone) {
+        List<MedicationReminderService.AlarmDetail> alarms = reminderService.getAlarmDetails(phone);
+        if (!alarms.isEmpty() && alarms.get(0).googleCalendarUrl() != null) {
+            return new org.springframework.web.servlet.view.RedirectView(alarms.get(0).googleCalendarUrl());
+        }
+        return new org.springframework.web.servlet.view.RedirectView("/alarms.html?phone=" + java.net.URLEncoder.encode(phone, java.nio.charset.StandardCharsets.UTF_8));
     }
 
     /**

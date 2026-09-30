@@ -253,12 +253,13 @@ public class MedicationReminderService {
             int minute,
             String formattedTime12h,
             String androidAlarmIntentUrl,
+            String googleCalendarUrl,
             String status
     ) {}
 
     /**
-     * Generates a standard RFC 5545 iCalendar (.ics) file with VALARM triggers
-     * to import recurring audio alarms directly into Android Clock/Calendar & Apple Calendar.
+     * Generates an RFC 5545 compliant iCalendar (.ics) file with VTIMEZONE and VALARM
+     * specifically formatted for Google Calendar, Samsung Calendar, and Apple Calendar.
      */
     public String generateIcsCalendar(String patientPhone) {
         List<MedicationReminder> reminders = getActiveReminders(patientPhone);
@@ -271,8 +272,21 @@ public class MedicationReminderService {
         ics.append("X-WR-CALNAME:MediAssist Medication Alarms\r\n");
         ics.append("X-WR-TIMEZONE:Asia/Kolkata\r\n");
 
+        // Standard VTIMEZONE definition for Asia/Kolkata
+        ics.append("BEGIN:VTIMEZONE\r\n");
+        ics.append("TZID:Asia/Kolkata\r\n");
+        ics.append("X-LIC-LOCATION:Asia/Kolkata\r\n");
+        ics.append("BEGIN:STANDARD\r\n");
+        ics.append("TZOFFSETFROM:+0530\r\n");
+        ics.append("TZOFFSETTO:+0530\r\n");
+        ics.append("TZNAME:IST\r\n");
+        ics.append("DTSTART:19700101T000000\r\n");
+        ics.append("END:STANDARD\r\n");
+        ics.append("END:VTIMEZONE\r\n");
+
         LocalDate today = LocalDate.now();
         String datePrefix = today.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String nowUtc = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'"));
 
         for (MedicationReminder r : reminders) {
             String time = (r.getReminderTime() != null && !r.getReminderTime().isBlank()) ? r.getReminderTime() : "08:00";
@@ -284,31 +298,29 @@ public class MedicationReminderService {
                 min = timeParts.length > 1 ? Integer.parseInt(timeParts[1]) : 0;
             } catch (Exception ignored) {}
 
+            int endMin = (min + 15) % 60;
+            int endHour = (min + 15 >= 60) ? (hour + 1) % 24 : hour;
+
             String dtStart = String.format("%sT%02d%02d00", datePrefix, hour, min);
+            String dtEnd = String.format("%sT%02d%02d00", datePrefix, endHour, endMin);
             String medName = r.getMedicineName() != null ? r.getMedicineName() : "Prescribed Medication";
             String dosage = r.getDosageInstruction() != null ? r.getDosageInstruction() : "As directed by doctor";
 
             ics.append("BEGIN:VEVENT\r\n");
-            ics.append("UID:med-alarm-").append(r.getId()).append("-").append(System.currentTimeMillis()).append("@mediassist.com\r\n");
-            ics.append("SUMMARY:💊 Take ").append(escapeIcs(medName)).append("\r\n");
-            ics.append("DESCRIPTION:Dosage: ").append(escapeIcs(dosage)).append("\\nScheduled by MediAssist Vision Prescription-to-Alarm.\\nConfirm taken via WhatsApp.\r\n");
-            ics.append("DTSTART:").append(dtStart).append("\r\n");
-            ics.append("DURATION:PT10M\r\n");
+            ics.append("UID:med-alarm-").append(r.getId()).append("-").append(datePrefix).append("@mediassist.com\r\n");
+            ics.append("DTSTAMP:").append(nowUtc).append("\r\n");
+            ics.append("SUMMARY:Take ").append(escapeIcs(medName)).append("\r\n");
+            ics.append("DESCRIPTION:Dosage: ").append(escapeIcs(dosage)).append("\\nScheduled via MediAssist Vision Prescription-to-Alarm.\\nConfirm taken on WhatsApp.\r\n");
+            ics.append("DTSTART;TZID=Asia/Kolkata:").append(dtStart).append("\r\n");
+            ics.append("DTEND;TZID=Asia/Kolkata:").append(dtEnd).append("\r\n");
             ics.append("RRULE:FREQ=DAILY\r\n");
+            ics.append("STATUS:CONFIRMED\r\n");
 
-            // High-priority audio alarm
-            ics.append("BEGIN:VALARM\r\n");
-            ics.append("TRIGGER:-PT0M\r\n");
-            ics.append("ACTION:AUDIO\r\n");
-            ics.append("ATTACH;VALUE=URI:Basso\r\n");
-            ics.append("DESCRIPTION:⏰ MEDICATION ALARM: Time to take ").append(escapeIcs(medName)).append("\r\n");
-            ics.append("END:VALARM\r\n");
-
-            // Pop-up notification alert
+            // Google Calendar / Android compliant alarm trigger
             ics.append("BEGIN:VALARM\r\n");
             ics.append("TRIGGER:-PT0M\r\n");
             ics.append("ACTION:DISPLAY\r\n");
-            ics.append("DESCRIPTION:⏰ MEDICATION ALARM: Time to take ").append(escapeIcs(medName)).append(" (").append(escapeIcs(dosage)).append(")\r\n");
+            ics.append("DESCRIPTION:Time to take ").append(escapeIcs(medName)).append(" (").append(escapeIcs(dosage)).append(")\r\n");
             ics.append("END:VALARM\r\n");
 
             ics.append("END:VEVENT\r\n");
@@ -327,11 +339,15 @@ public class MedicationReminderService {
     }
 
     /**
-     * Returns rich alarm data for mobile companion page including native Android clock intents.
+     * Returns rich alarm data for mobile companion page including native Android clock intents
+     * and direct 1-click Google Calendar web/app template URLs.
      */
     public List<AlarmDetail> getAlarmDetails(String phone) {
         List<MedicationReminder> reminders = getActiveReminders(phone);
         List<AlarmDetail> details = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+        String datePrefix = today.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+
         for (MedicationReminder r : reminders) {
             String time = (r.getReminderTime() != null && !r.getReminderTime().isBlank()) ? r.getReminderTime() : "08:00";
             String[] timeParts = time.split(":");
@@ -346,28 +362,44 @@ public class MedicationReminderService {
             String ampm = hour < 12 ? "AM" : "PM";
             String formatted12h = String.format("%02d:%02d %s", displayHour, min, ampm);
 
-            String msg = "Take " + (r.getMedicineName() != null ? r.getMedicineName() : "Medicine");
+            String medName = r.getMedicineName() != null ? r.getMedicineName() : "Prescribed Medication";
+            String dosage = r.getDosageInstruction() != null ? r.getDosageInstruction() : "As directed by doctor";
+
             String encodedMsg;
             try {
-                encodedMsg = java.net.URLEncoder.encode(msg, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
+                encodedMsg = java.net.URLEncoder.encode("Take " + medName, java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20");
             } catch (Exception e) {
                 encodedMsg = "Medication";
             }
 
+            // Android Clock native intent
             String androidIntent = String.format(
                     "intent:#Intent;action=android.intent.action.SET_ALARM;S.android.intent.extra.MESSAGE=%s;i.android.intent.extra.HOUR=%d;i.android.intent.extra.MINUTES=%d;B.android.intent.extra.SKIP_UI=false;end",
                     encodedMsg, hour, min
             );
 
+            // Direct Google Calendar one-click Template URL
+            int endMin = (min + 15) % 60;
+            int endHour = (min + 15 >= 60) ? (hour + 1) % 24 : hour;
+            String dtStart = String.format("%sT%02d%02d00", datePrefix, hour, min);
+            String dtEnd = String.format("%sT%02d%02d00", datePrefix, endHour, endMin);
+            String gTitle = java.net.URLEncoder.encode("Take " + medName, java.nio.charset.StandardCharsets.UTF_8);
+            String gDetails = java.net.URLEncoder.encode("Dosage: " + dosage + "\nScheduled by MediAssist Vision Prescription-to-Alarm.", java.nio.charset.StandardCharsets.UTF_8);
+            String googleCalendarUrl = String.format(
+                    "https://calendar.google.com/calendar/render?action=TEMPLATE&text=%s&dates=%s/%s&ctz=Asia/Kolkata&details=%s&recur=RRULE:FREQ=DAILY",
+                    gTitle, dtStart, dtEnd, gDetails
+            );
+
             details.add(new AlarmDetail(
                     r.getId(),
-                    r.getMedicineName(),
-                    r.getDosageInstruction(),
+                    medName,
+                    dosage,
                     r.getReminderTime(),
                     hour,
                     min,
                     formatted12h,
                     androidIntent,
+                    googleCalendarUrl,
                     r.getStatus() != null ? r.getStatus().name() : "PENDING"
             ));
         }
