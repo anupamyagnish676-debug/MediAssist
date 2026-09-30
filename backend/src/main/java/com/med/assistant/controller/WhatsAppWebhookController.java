@@ -716,7 +716,10 @@ public class WhatsAppWebhookController {
         }
 
         String masterUrl = externalHospitalService.generateMasterGoogleMapsUrl(loc[0], loc[1], preferredDept);
-        sb.append("👉 *Open Complete Map on Google Maps:*\n").append(masterUrl);
+        String masterClinicsUrl = externalHospitalService.generateMasterGoogleMapsClinicsUrl(loc[0], loc[1]);
+        sb.append("👉 *Live Maps on Your Phone:*\n");
+        sb.append("🏥 *Hospitals:* ").append(masterUrl).append("\n");
+        sb.append("🩺 *Clinics & OPDs:* ").append(masterClinicsUrl);
 
         // 1. Send full hospital list via standard text message
         whatsAppClient.sendTextMessage(fromPhone, sb.toString());

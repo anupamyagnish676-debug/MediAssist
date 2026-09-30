@@ -314,6 +314,152 @@ public class DataInitializer {
                     return h;
                 });
 
+                // 9. Hospital 9: Lilavati Hospital & Research Centre (Mumbai)
+                Hospital h9 = hospitalRepo.findByNameIgnoreCase("Lilavati Hospital & Research Centre").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Lilavati Hospital & Research Centre",
+                            "A-791, Bandra Reclamation, Bandra West, Mumbai, Maharashtra 400050",
+                            19.0519, 72.8289,
+                            "+91 22-2675-1000",
+                            "#0284c7"
+                    );
+                    h.setSpecialties("General Medicine, Cardiology, Orthopedics, Pediatrics, Neurology, Dermatology");
+                    h = hospitalRepo.save(h);
+
+                    Doctor d21 = new Doctor("Dr. Ashok Sethi", "General Medicine", h, 40, 600.0);
+                    d21.setRoomNumber("101");
+                    d21.setAvailableTime("09:00 AM - 1:00 PM");
+                    Doctor d22 = new Doctor("Dr. Priya Sharma", "Cardiology", h, 30, 800.0);
+                    d22.setRoomNumber("204");
+                    d22.setAvailableTime("10:00 AM - 2:00 PM");
+                    Doctor d23 = new Doctor("Dr. Rahul Varma", "Pediatrics", h, 25, 500.0);
+                    d23.setRoomNumber("108");
+                    d23.setAvailableTime("11:00 AM - 3:00 PM");
+                    doctorRepo.save(d21);
+                    doctorRepo.save(d22);
+                    doctorRepo.save(d23);
+                    return h;
+                });
+
+                // 10. Hospital 10: Manipal Hospital (Bengaluru)
+                Hospital h10 = hospitalRepo.findByNameIgnoreCase("Manipal Hospital Bengaluru").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Manipal Hospital Bengaluru",
+                            "98 HAL Old Airport Rd, Kodihalli, Bengaluru, Karnataka 560017",
+                            12.9592, 77.6499,
+                            "+91 80-2502-4444",
+                            "#0d9488"
+                    );
+                    h.setSpecialties("General Medicine, Cardiology, Pediatrics, Orthopedics, ENT, Dermatology");
+                    h = hospitalRepo.save(h);
+
+                    Doctor d24 = new Doctor("Dr. Ramesh Narayan", "General Medicine", h, 35, 550.0);
+                    d24.setRoomNumber("OPD-1");
+                    d24.setAvailableTime("09:30 AM - 1:30 PM");
+                    Doctor d25 = new Doctor("Dr. Deepa Hegde", "Cardiology", h, 25, 750.0);
+                    d25.setRoomNumber("OPD-8");
+                    d25.setAvailableTime("10:30 AM - 2:30 PM");
+                    Doctor d26 = new Doctor("Dr. Anand Kulkarni", "Orthopedics", h, 25, 600.0);
+                    d26.setRoomNumber("OPD-12");
+                    d26.setAvailableTime("11:00 AM - 3:00 PM");
+                    doctorRepo.save(d24);
+                    doctorRepo.save(d25);
+                    doctorRepo.save(d26);
+                    return h;
+                });
+
+                // 11. Hospital 11: Apollo Multispeciality Hospitals (Kolkata)
+                Hospital h11 = hospitalRepo.findByNameIgnoreCase("Apollo Multispeciality Hospitals Kolkata").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Apollo Multispeciality Hospitals Kolkata",
+                            "58 Canal Circular Rd, Kadapara, Phool Bagan, Kolkata, West Bengal 700054",
+                            22.5697, 88.4067,
+                            "+91 33-2320-3040",
+                            "#f97316"
+                    );
+                    h.setSpecialties("General Medicine, Cardiology, Pediatrics, Orthopedics, Oncology");
+                    h = hospitalRepo.save(h);
+
+                    Doctor d27 = new Doctor("Dr. Sourav Ganguly", "General Medicine", h, 40, 500.0);
+                    d27.setRoomNumber("201");
+                    d27.setAvailableTime("09:00 AM - 1:00 PM");
+                    Doctor d28 = new Doctor("Dr. Sharmila Bose", "Cardiology", h, 30, 700.0);
+                    d28.setRoomNumber("208");
+                    d28.setAvailableTime("10:00 AM - 2:00 PM");
+                    doctorRepo.save(d27);
+                    doctorRepo.save(d28);
+                    return h;
+                });
+
+                // 12. Hospital 12: Yashoda Hospitals (Hyderabad)
+                Hospital h12 = hospitalRepo.findByNameIgnoreCase("Yashoda Hospitals Hyderabad").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Yashoda Hospitals Hyderabad",
+                            "Alexander Rd, Somajiguda, Hyderabad, Telangana 500082",
+                            17.4243, 78.4552,
+                            "+91 40-4567-4567",
+                            "#7c3aed"
+                    );
+                    h.setSpecialties("General Medicine, Cardiology, Neurology, Orthopedics, Pediatrics");
+                    h = hospitalRepo.save(h);
+
+                    Doctor d29 = new Doctor("Dr. K. Srinivas Rao", "General Medicine", h, 40, 500.0);
+                    d29.setRoomNumber("103");
+                    d29.setAvailableTime("09:00 AM - 1:00 PM");
+                    Doctor d30 = new Doctor("Dr. Lakshmi Reddy", "Cardiology", h, 25, 750.0);
+                    d30.setRoomNumber("205");
+                    d30.setAvailableTime("11:00 AM - 3:00 PM");
+                    doctorRepo.save(d29);
+                    doctorRepo.save(d30);
+                    return h;
+                });
+
+                // 13. Hospital 13: Apollo Hospital Greams Road (Chennai)
+                Hospital h13 = hospitalRepo.findByNameIgnoreCase("Apollo Hospital Chennai").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Apollo Hospital Chennai",
+                            "21 Greams Lane, Thousand Lights, Chennai, Tamil Nadu 600006",
+                            13.0604, 80.2505,
+                            "+91 44-2829-0200",
+                            "#059669"
+                    );
+                    h.setSpecialties("General Medicine, Cardiology, Pediatrics, Orthopedics, Oncology");
+                    h = hospitalRepo.save(h);
+
+                    Doctor d31 = new Doctor("Dr. V. Ramanathan", "General Medicine", h, 35, 500.0);
+                    d31.setRoomNumber("104");
+                    d31.setAvailableTime("09:00 AM - 1:00 PM");
+                    Doctor d32 = new Doctor("Dr. Meenakshi Sundaram", "Cardiology", h, 30, 800.0);
+                    d32.setRoomNumber("202");
+                    d32.setAvailableTime("10:00 AM - 2:00 PM");
+                    doctorRepo.save(d31);
+                    doctorRepo.save(d32);
+                    return h;
+                });
+
+                // 14. Hospital 14: Ruby Hall Clinic (Pune)
+                Hospital h14 = hospitalRepo.findByNameIgnoreCase("Ruby Hall Clinic Pune").orElseGet(() -> {
+                    Hospital h = new Hospital(
+                            "Ruby Hall Clinic Pune",
+                            "40 Sasoon Rd, Sangamvadi, Pune, Maharashtra 411001",
+                            18.5328, 73.8770,
+                            "+91 20-6645-5100",
+                            "#0284c7"
+                    );
+                    h.setSpecialties("General Medicine, Cardiology, Orthopedics, Pediatrics, Dermatology");
+                    h = hospitalRepo.save(h);
+
+                    Doctor d33 = new Doctor("Dr. Nitin Deshmukh", "General Medicine", h, 35, 500.0);
+                    d33.setRoomNumber("OPD-3");
+                    d33.setAvailableTime("09:30 AM - 1:30 PM");
+                    Doctor d34 = new Doctor("Dr. Sunita Kulkarni", "Pediatrics", h, 25, 450.0);
+                    d34.setRoomNumber("OPD-7");
+                    d34.setAvailableTime("10:30 AM - 2:30 PM");
+                    doctorRepo.save(d33);
+                    doctorRepo.save(d34);
+                    return h;
+                });
+
                 // Sample Medication Reminder
                 if (reminderRepo.count() == 0) {
                     MedicationReminder rem1 = new MedicationReminder("+919876543210", "Metformin 500mg", "1 tablet post-dinner", "21:00");

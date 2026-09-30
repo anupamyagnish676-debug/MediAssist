@@ -126,7 +126,10 @@ public class LocationService {
         res = findNearbyHospitals(userLat, userLon, 35.0);
         if (!res.isEmpty()) return res;
 
-        // Never return distant clinics (60+ km or nationwide) as nearby local partner clinics
+        // Tier 3: Regional partner hospital within 80 km (for patients on outskirts or satellite towns)
+        res = findNearbyHospitals(userLat, userLon, 80.0);
+        if (!res.isEmpty()) return res;
+
         return List.of();
     }
 
