@@ -634,10 +634,10 @@
                         </div>
 
                         <div class="med-actions">
-                            <!-- Direct Android Clock Intent -->
-                            <a href="${a.androidAlarmIntentUrl}" class="btn-sm btn-clock-intent" title="Open native Clock app with alarm pre-filled">
+                            <!-- Direct Phone Clock Alarm -->
+                            <button class="btn-sm btn-clock-intent" onclick="setSingleClockAlarm(${a.id})" title="Set alarm in phone Clock">
                                 <span>⏰</span> Phone Clock
-                            </a>
+                            </button>
                             <!-- Direct Google Calendar Template Link (1-tap) -->
                             <button class="btn-sm btn-calendar-intent" onclick="openSingleCalendar(${a.id})" title="Add this alarm to Google Calendar">
                                 <span>📅</span> Google Cal
@@ -654,33 +654,41 @@
             }).join('');
         }
 
-        // 1-Tap set first alarm in Android Clock app
+        // Set alarm in phone Clock via Google Search Alarm Card (100% supported by mobile Chrome)
+        function setClockAlarmForMed(alarm) {
+            if (!alarm) return;
+            const timeStr = alarm.formattedTime12h || alarm.reminderTime;
+            showToast(`⏰ Setting Alarm for ${alarm.medicineName} (${timeStr})...`);
+            
+            // Google Alarm Card triggers the mobile Clock widget directly on Android
+            const query = encodeURIComponent(`set alarm for ${timeStr}`);
+            const alarmUrl = `https://www.google.com/search?q=${query}`;
+            window.open(alarmUrl, '_blank');
+        }
+
+        // 1-Tap set first alarm in Phone Clock
         function setFirstClockAlarm() {
             if (currentAlarms.length > 0) {
-                const first = currentAlarms[0];
-                showToast(`Opening Clock app for: ${first.medicineName}`);
-                window.location.href = first.androidAlarmIntentUrl;
+                setClockAlarmForMed(currentAlarms[0]);
             } else {
                 showToast("No active alarms to set in Clock.");
             }
         }
 
-        // ---------------------------------------------------------------
-        // Smart Calendar Opener - forces Google Calendar APP on Android,
-        // falls back to web URL on iOS/desktop
-        // ---------------------------------------------------------------
-        function openCalendarUrl(url) {
-            const isAndroid = /Android/i.test(navigator.userAgent);
-            if (isAndroid) {
-                // Android Intent URL forces Chrome to open Google Calendar APP
-                // package=com.google.android.calendar means it opens the installed app
-                const intentUrl = 'intent://' + url.replace('https://', '') +
-                    '#Intent;scheme=https;package=com.google.android.calendar;' +
-                    'S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
-                window.location.href = intentUrl;
-            } else {
-                window.open(url, '_blank');
+        function setSingleClockAlarm(id) {
+            const alarm = currentAlarms.find(a => a.id === id);
+            if (alarm) {
+                setClockAlarmForMed(alarm);
             }
+        }
+
+        // Universal Calendar Opener - opens Google Calendar without Android Chrome intent blockage
+        function openCalendarUrl(url) {
+            if (!url) {
+                showToast("Calendar link not ready, please wait a moment.");
+                return;
+            }
+            window.open(url, '_blank');
         }
 
         // Open Google Calendar for a single medicine card by alarm ID
