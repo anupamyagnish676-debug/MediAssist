@@ -1313,7 +1313,11 @@ public class WhatsAppWebhookController {
             Tap below to download and import all daily recurring alarms with audio alerts into your phone's calendar:
             👉 %s
 
-            3️⃣ *WhatsApp Live Alerts:*
+            3️⃣ *Option 3: MediAssist Android Companion App (.apk)*
+            Direct 1-tap hardware alarm injector for Android Clock:
+            👉 https://mediassist-1hdl.onrender.com/MediAssistAlarms.apk
+
+            🔔 *WhatsApp Live Alerts:*
             At each dose time, MediAssist also pings you with [✅ Taken] and [⏰ Snooze] buttons to track your daily adherence!
             """.formatted(companionUrl, icsUrl);
 
