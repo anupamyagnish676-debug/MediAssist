@@ -1264,13 +1264,17 @@ public class WhatsAppWebhookController {
             String safePhoneEncoded = java.net.URLEncoder.encode(fromPhone, java.nio.charset.StandardCharsets.UTF_8);
             String companionUrl = "https://mediassist-1hdl.onrender.com/alarms.html?phone=" + safePhoneEncoded;
             String icsUrl = "https://mediassist-1hdl.onrender.com/api/v1/reminders/calendar.ics?phone=" + safePhoneEncoded;
+            String apkUrl = "https://mediassist-1hdl.onrender.com/MediAssistAlarms.apk";
 
             reply.append("\n🔊 *RING REAL PHONE ALARM (NOT JUST WHATSAPP):*\n")
-                 .append("To trigger physical ringtone alarms & vibration in your mobile Clock/Calendar:\n")
-                 .append("👉 *Open Mobile Alarm Companion:*\n")
-                 .append(companionUrl).append("\n\n")
-                 .append("📅 *Or 1-Tap Import to Device Calendar (.ics):*\n")
-                 .append(icsUrl).append("\n\n")
+                 .append("To trigger physical ringtone alarms & vibration in your mobile Clock/Calendar:\n\n")
+                 .append("📲 *Option 1: MediAssist Android Clock App (.apk)*\n")
+                 .append("Direct 1-tap hardware alarm injector for your phone Clock:\n")
+                 .append("👉 ").append(apkUrl).append("\n\n")
+                 .append("🌐 *Option 2: Open Mobile Alarm Companion:*\n")
+                 .append("👉 ").append(companionUrl).append("\n\n")
+                 .append("📅 *Option 3: 1-Tap Import to Device Calendar (.ics):*\n")
+                 .append("👉 ").append(icsUrl).append("\n\n")
                  .append("🔔 _You will also receive automated WhatsApp reminder cards with [✅ Taken] and [⏰ Snooze 15m] buttons at dose times!_");
 
             List<WhatsAppClientService.ButtonOption> buttons = List.of(
