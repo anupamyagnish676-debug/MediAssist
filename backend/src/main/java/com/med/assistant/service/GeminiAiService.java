@@ -25,13 +25,22 @@ public class GeminiAiService {
             "gemini-3.5-flash-lite"
     );
 
-    public record PrescribedMedication(String name, String dosage, List<String> reminderTimes) {}
+    public record PrescribedMedication(String name, String dosage, List<String> reminderTimes, String dietaryInstructions) {
+        public PrescribedMedication(String name, String dosage, List<String> reminderTimes) {
+            this(name, dosage, reminderTimes, "Take as directed by doctor.");
+        }
+    }
 
     public record PrescriptionAnalysisResult(
             String doctorNotes,
             List<PrescribedMedication> medications,
-            String rawSummary
-    ) {}
+            String rawSummary,
+            String safetyPrecautions
+    ) {
+        public PrescriptionAnalysisResult(String doctorNotes, List<PrescribedMedication> medications, String rawSummary) {
+            this(doctorNotes, medications, rawSummary, "");
+        }
+    }
 
     @Value("${app.ai.gemini.api-key:}")
     private String geminiApiKey;
@@ -272,7 +281,8 @@ public class GeminiAiService {
                     2. Identify doctor/hospital details, patient name, and diagnosis/complaints if legible.
                     3. Extract EVERY prescribed medicine with its form, name and strength (e.g. 'Pantocid 40mg', 'Metformin 500mg', 'Cap. Rozad', 'Tab. Ambulax', 'Paracetamol 650mg').
                     4. Extract exact dosage instructions and relation to meals (e.g. '1 Tablet before breakfast (Empty stomach)', '1 Tablet after dinner', '1 Tablet post-lunch', '1 Tablet at bedtime').
-                    5. Deduce specific daily reminder times (24-hour format HH:mm, IST):
+                    5. Identify critical DRUG INTERACTIONS, FOOD/DAIRY PRECAUTIONS, and SAFETY WARNINGS (e.g. "Take acidity medicine on empty stomach 30 mins before breakfast", "Avoid alcohol or heavy machinery if drowsy", "Do not skip antibiotic doses").
+                    6. Deduce specific daily reminder times (24-hour format HH:mm, IST):
                        - Explicit times on slip: e.g. "7 AM" -> "07:00", "9 PM" -> "21:00"
                        - Before Breakfast / Empty Stomach / OD AC -> "07:30"
                        - After Breakfast / Morning / OD PC -> "08:30"
@@ -287,10 +297,12 @@ public class GeminiAiService {
                     Respond ONLY with a valid JSON object (no markdown, no backticks, no comments) matching:
                     {
                       "doctorNotes": "Diagnosis, doctor name, and patient details from prescription",
+                      "safetyPrecautions": "Key drug precautions, dietary warnings, and food interactions",
                       "medications": [
                         {
                           "name": "Medication Name and Strength",
                           "dosage": "Dosage instructions and meal timing (e.g. 1 Tablet before breakfast)",
+                          "dietaryInstructions": "Specific dietary note (e.g. Empty stomach, after meals)",
                           "times": ["07:30", "21:00"]
                         }
                       ]
@@ -455,6 +467,7 @@ public class GeminiAiService {
             JsonNode root = mapper.readTree(clean);
 
             String doctorNotes = root.path("doctorNotes").asText("Prescription verified. Dosage schedule generated per standard outpatient guidelines.");
+            String safetyPrecautions = root.path("safetyPrecautions").asText("");
             List<PrescribedMedication> meds = new ArrayList<>();
 
             JsonNode medsNode = root.path("medications");
@@ -462,6 +475,7 @@ public class GeminiAiService {
                 for (JsonNode m : medsNode) {
                     String name = m.path("name").asText("").trim();
                     String dosage = m.path("dosage").asText("As directed").trim();
+                    String dietary = m.path("dietaryInstructions").asText("Take as directed").trim();
                     if (name.isBlank()) continue;
 
                     List<String> times = new ArrayList<>();
@@ -491,12 +505,12 @@ public class GeminiAiService {
                             times.add("08:00");
                         }
                     }
-                    meds.add(new PrescribedMedication(name, dosage, times));
+                    meds.add(new PrescribedMedication(name, dosage, times, dietary));
                 }
             }
 
             if (!meds.isEmpty()) {
-                return new PrescriptionAnalysisResult(doctorNotes, meds, rawText);
+                return new PrescriptionAnalysisResult(doctorNotes, meds, rawText, safetyPrecautions);
             }
         } catch (Exception e) {
             logger.warn("Failed to parse Gemini JSON output: {}", e.getMessage());
@@ -506,14 +520,15 @@ public class GeminiAiService {
 
     public PrescriptionAnalysisResult generateFallbackPrescriptionResult(String fileName) {
         List<PrescribedMedication> meds = List.of(
-                new PrescribedMedication("Pantocid 40mg", "1 Tablet before breakfast (Empty stomach)", List.of("07:30")),
-                new PrescribedMedication("Metformin 500mg", "1 Tablet after dinner", List.of("21:00")),
-                new PrescribedMedication("Paracetamol 650mg", "1 Tablet after lunch (Post meals)", List.of("13:30"))
+                new PrescribedMedication("Pantocid 40mg", "1 Tablet before breakfast (Empty stomach)", List.of("07:30"), "Take 30 mins before breakfast with plain water"),
+                new PrescribedMedication("Metformin 500mg", "1 Tablet after dinner", List.of("21:00"), "Take with or right after dinner"),
+                new PrescribedMedication("Paracetamol 650mg", "1 Tablet after lunch (Post meals)", List.of("13:30"), "Take after food, avoid on empty stomach")
         );
         return new PrescriptionAnalysisResult(
                 "Prescription scanned. Clinical dosage schedule generated based on standard outpatient prescription guidelines.",
                 meds,
-                "Standard clinical regimen scheduled"
+                "Standard clinical regimen scheduled",
+                "• Take Pantocid 30 mins before breakfast.\n• Avoid heavy or greasy meals with Metformin.\n• Stay well hydrated throughout the day."
         );
     }
 

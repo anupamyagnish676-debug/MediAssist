@@ -18,15 +18,27 @@ public class AppointmentApiController {
     private final com.med.assistant.service.AppointmentSlipPdfService pdfService;
     private final com.med.assistant.service.WhatsAppClientService whatsAppClient;
     private final com.med.assistant.repository.UserRepository userRepository;
+    private final com.med.assistant.service.ReportWardrobeService wardrobeService;
+    private final com.med.assistant.service.MedicationReminderService reminderService;
+    private final com.med.assistant.repository.DoctorRepository doctorRepository;
+    private final com.med.assistant.repository.HospitalRepository hospitalRepository;
 
     public AppointmentApiController(AppointmentRepository appointmentRepository,
                                     com.med.assistant.service.AppointmentSlipPdfService pdfService,
                                     com.med.assistant.service.WhatsAppClientService whatsAppClient,
-                                    com.med.assistant.repository.UserRepository userRepository) {
+                                    com.med.assistant.repository.UserRepository userRepository,
+                                    com.med.assistant.service.ReportWardrobeService wardrobeService,
+                                    com.med.assistant.service.MedicationReminderService reminderService,
+                                    com.med.assistant.repository.DoctorRepository doctorRepository,
+                                    com.med.assistant.repository.HospitalRepository hospitalRepository) {
         this.appointmentRepository = appointmentRepository;
         this.pdfService = pdfService;
         this.whatsAppClient = whatsAppClient;
         this.userRepository = userRepository;
+        this.wardrobeService = wardrobeService;
+        this.reminderService = reminderService;
+        this.doctorRepository = doctorRepository;
+        this.hospitalRepository = hospitalRepository;
     }
 
     private String cleanToken(String rawToken) {
@@ -222,32 +234,66 @@ public class AppointmentApiController {
         appt.setConsultationEndTime(java.time.LocalDateTime.now());
         appointmentRepository.save(appt);
 
-        // 1. Notify NEXT waiting patient
+        // 1. Notify NEXT waiting patients with Real-Time Proximity Alerts (Tokens 1, 2, and 3)
         if (appt.getDoctor() != null) {
             List<Appointment> todayList = appointmentRepository.findByDoctorIdAndAppointmentDateOrderBySerialNumberAsc(
                     appt.getDoctor().getId(), appt.getAppointmentDate());
 
-            Optional<Appointment> nextOpt = todayList.stream()
+            List<Appointment> waitingList = todayList.stream()
                     .filter(a -> a.getSerialNumber() > appt.getSerialNumber())
                     .filter(a -> a.getStatus() == Appointment.Status.CHECKED_IN || a.getStatus() == Appointment.Status.CONFIRMED)
-                    .findFirst();
+                    .toList();
 
-            if (nextOpt.isPresent()) {
-                Appointment nextPatient = nextOpt.get();
-                String docName = appt.getDoctor().getName();
-                String room = appt.getDoctor().getRoomNumber() != null ? appt.getDoctor().getRoomNumber() : "OPD Chamber";
+            String docName = appt.getDoctor().getName();
+            String room = appt.getDoctor().getRoomNumber() != null ? appt.getDoctor().getRoomNumber() : "OPD Chamber";
 
+            // Next patient (1st in line) - Call into chamber
+            if (waitingList.size() >= 1) {
+                Appointment p1 = waitingList.get(0);
                 String turnMsg = String.format(
-                        "🟢 *IT'S YOUR TURN!*\n\n" +
+                        "🟢 *IT'S YOUR TURN NOW!*\n\n" +
                         "Hello %s, *%s* is ready to see you now!\n\n" +
                         "👉 *Your Queue Token: #%02d*\n" +
                         "🚪 Please proceed directly into *Room %s*.",
-                        nextPatient.getPatientName() != null ? nextPatient.getPatientName() : "Patient",
+                        p1.getPatientName() != null ? p1.getPatientName() : "Patient",
                         docName,
-                        nextPatient.getSerialNumber(),
+                        p1.getSerialNumber(),
                         room
                 );
-                whatsAppClient.sendTextMessage(nextPatient.getPatientPhone(), turnMsg);
+                whatsAppClient.sendTextMessage(p1.getPatientPhone(), turnMsg);
+            }
+
+            // 2nd patient in line - Be ready right outside
+            if (waitingList.size() >= 2) {
+                Appointment p2 = waitingList.get(1);
+                String p2Msg = String.format(
+                        "⏳ *OPD Queue Update:* Doctor is now seeing Token #%02d.\n\n" +
+                        "Hello %s, you are *NEXT IN LINE* (Token #%02d, only 1 patient ahead).\n" +
+                        "🚪 Please move near *Room %s* to be ready!",
+                        waitingList.get(0).getSerialNumber(),
+                        p2.getPatientName() != null ? p2.getPatientName() : "Patient",
+                        p2.getSerialNumber(),
+                        room
+                );
+                whatsAppClient.sendTextMessage(p2.getPatientPhone(), p2Msg);
+            }
+
+            // 3rd patient in line - Proximity alert (~15 mins)
+            if (waitingList.size() >= 3) {
+                Appointment p3 = waitingList.get(2);
+                String p3Msg = String.format(
+                        "🏃 *YOUR TURN IS APPROACHING!* (3rd in queue)\n\n" +
+                        "Hello %s,\n" +
+                        "*%s* is currently with Token #%02d.\n\n" +
+                        "👉 *Your Token: #%02d* (only 2 patients ahead, estimated ~10–15 mins).\n" +
+                        "🚪 Please head towards *Room %s* so you don't miss your call!",
+                        p3.getPatientName() != null ? p3.getPatientName() : "Patient",
+                        docName,
+                        waitingList.get(0).getSerialNumber(),
+                        p3.getSerialNumber(),
+                        room
+                );
+                whatsAppClient.sendTextMessage(p3.getPatientPhone(), p3Msg);
             }
         }
 
@@ -341,5 +387,179 @@ public class AppointmentApiController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
+    }
+
+    public record WalkInRequest(
+            Long hospitalId,
+            Long doctorId,
+            String patientName,
+            String patientPhone,
+            String timeSlot
+    ) {}
+
+    /**
+     * Issue an instant Walk-in OPD Token at the reception desk.
+     */
+    @PostMapping("/walk-in")
+    public ResponseEntity<?> createWalkInAppointment(@RequestBody WalkInRequest req) {
+        if (req.doctorId() == null || req.patientPhone() == null || req.patientPhone().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Doctor and Patient Phone are required"));
+        }
+        Optional<com.med.assistant.model.Doctor> docOpt = doctorRepository.findById(req.doctorId());
+        if (docOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("success", false, "message", "Doctor not found"));
+        }
+        com.med.assistant.model.Doctor doctor = docOpt.get();
+        com.med.assistant.model.Hospital hospital = doctor.getHospital();
+
+        LocalDate today = LocalDate.now();
+        List<Appointment> bookedAppts = appointmentRepository.findByDoctorIdAndAppointmentDateOrderBySerialNumberAsc(doctor.getId(), today);
+        int nextSerial = bookedAppts.size() + 1;
+
+        String qrToken;
+        do {
+            qrToken = String.format("%06d", java.util.concurrent.ThreadLocalRandom.current().nextInt(100000, 1000000));
+        } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
+
+        String patientName = (req.patientName() != null && !req.patientName().isBlank()) ? req.patientName().trim() : "Walk-in Patient";
+        String timeSlot = (req.timeSlot() != null && !req.timeSlot().isBlank()) ? req.timeSlot().trim() : "Walk-in Priority";
+
+        Appointment appt = new Appointment(hospital, doctor, req.patientPhone().trim(), patientName,
+                today, timeSlot, nextSerial, qrToken);
+        appt.setStatus(Appointment.Status.CHECKED_IN);
+        appt = appointmentRepository.save(appt);
+
+        try {
+            pdfService.generatePdfSlip(appt);
+        } catch (Exception e) {
+            // pdf error logged
+        }
+
+        // WhatsApp notification
+        try {
+            String pdfUrl = "https://mediassist-1hdl.onrender.com/api/v1/appointments/" + appt.getId() + "/pdf";
+            String msg = String.format("""
+                🏥 *Walk-In OPD Token Issued!*
+                
+                Hello %s,
+                Your walk-in token for *%s* (%s) has been generated:
+                
+                👉 *Token Number: #%02d*
+                🚪 *Room:* %s
+                📅 *Date:* %s
+                
+                📄 *Download Appointment Slip:*
+                %s
+                """,
+                patientName,
+                doctor.getName(),
+                doctor.getDepartment(),
+                nextSerial,
+                doctor.getRoomNumber() != null ? doctor.getRoomNumber() : "OPD Desk",
+                today.toString(),
+                pdfUrl
+            );
+            whatsAppClient.sendTextMessage(req.patientPhone().trim(), msg);
+        } catch (Exception we) {
+            // non-blocking
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Walk-in token #" + nextSerial + " issued successfully!",
+                "appointmentId", appt.getId(),
+                "serialNumber", nextSerial,
+                "patientName", patientName,
+                "patientPhone", req.patientPhone().trim(),
+                "qrCodeToken", qrToken,
+                "pdfUrl", "/api/v1/appointments/" + appt.getId() + "/pdf"
+        ));
+    }
+
+    /**
+     * Patient Medical Locker API: returns appointments, prescriptions/lab documents, and active medications.
+     */
+    @GetMapping("/patient/records")
+    public ResponseEntity<?> getPatientMedicalRecords(@RequestParam String phone) {
+        if (phone == null || phone.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Phone number is required"));
+        }
+        String cleanPhone = phone.trim();
+        Set<String> variants = new HashSet<>();
+        variants.add(cleanPhone);
+        String digits = cleanPhone.replaceAll("[^0-9]", "");
+        if (digits.length() == 10) {
+            variants.add("+91" + digits);
+            variants.add("91" + digits);
+            variants.add(digits);
+        } else if (digits.length() == 12 && digits.startsWith("91")) {
+            variants.add("+" + digits);
+            variants.add(digits);
+            variants.add(digits.substring(2));
+        }
+
+        // Appointments
+        List<Appointment> allAppts = new ArrayList<>();
+        for (String v : variants) {
+            allAppts.addAll(appointmentRepository.findByPatientPhoneOrderByAppointmentDateDesc(v));
+        }
+        Map<Long, Appointment> apptMap = new LinkedHashMap<>();
+        for (Appointment a : allAppts) {
+            apptMap.put(a.getId(), a);
+        }
+        List<Map<String, Object>> apptList = apptMap.values().stream()
+                .sorted((a, b) -> b.getAppointmentDate().compareTo(a.getAppointmentDate()))
+                .map(a -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", a.getId());
+                    m.put("tokenNumber", a.getSerialNumber());
+                    m.put("patientName", a.getPatientName() != null ? a.getPatientName() : "Patient");
+                    m.put("doctorName", a.getDoctor() != null ? a.getDoctor().getName() : "Doctor");
+                    m.put("department", a.getDoctor() != null ? a.getDoctor().getDepartment() : "General");
+                    m.put("hospitalName", a.getHospital() != null ? a.getHospital().getName() : "Hospital");
+                    m.put("roomNumber", a.getDoctor() != null ? a.getDoctor().getRoomNumber() : "-");
+                    m.put("appointmentDate", a.getAppointmentDate().toString());
+                    m.put("timeSlot", a.getTimeSlot() != null ? a.getTimeSlot() : "");
+                    m.put("status", a.getStatus().name());
+                    m.put("qrCodeToken", a.getQrCodeToken());
+                    m.put("pdfUrl", "/api/v1/appointments/" + a.getId() + "/pdf");
+                    return m;
+                }).toList();
+
+        // Documents from wardrobe
+        List<com.med.assistant.model.MedicalDocument> docs = new ArrayList<>();
+        if (wardrobeService != null) {
+            for (String v : variants) {
+                docs.addAll(wardrobeService.getRecentReports(v));
+            }
+        }
+        Map<Long, com.med.assistant.model.MedicalDocument> docMap = new LinkedHashMap<>();
+        for (com.med.assistant.model.MedicalDocument d : docs) {
+            docMap.put(d.getId(), d);
+        }
+        List<Map<String, Object>> docList = docMap.values().stream()
+                .sorted((a, b) -> b.getUploadedAt().compareTo(a.getUploadedAt()))
+                .map(d -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", d.getId());
+                    m.put("fileName", d.getOriginalFileName());
+                    m.put("documentType", d.getDocumentType() != null ? d.getDocumentType().name() : "PRESCRIPTION");
+                    m.put("aiSummary", d.getAiSummary());
+                    m.put("uploadedAt", d.getUploadedAt() != null ? d.getUploadedAt().toString() : "");
+                    return m;
+                }).toList();
+
+        // Medications
+        List<com.med.assistant.service.MedicationReminderService.AlarmDetail> meds = new ArrayList<>();
+        if (reminderService != null) {
+            meds = reminderService.getAlarmDetails(cleanPhone);
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("phone", cleanPhone);
+        response.put("appointments", apptList);
+        response.put("documents", docList);
+        response.put("medications", meds);
+        return ResponseEntity.ok(response);
     }
 }

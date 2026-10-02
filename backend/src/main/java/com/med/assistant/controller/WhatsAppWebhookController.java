@@ -58,6 +58,8 @@ public class WhatsAppWebhookController {
     private final Map<String, double[]> userLocation = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, Long> userPendingDoctorBooking = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, List<Long>> userRecentHospitals = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, String> userPatientNames = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, String> userLanguagePref = new java.util.concurrent.ConcurrentHashMap<>();
 
     public record PendingTimeBooking(Long doctorId, LocalDate chosenDate) {}
     private final Map<String, PendingTimeBooking> userPendingTimeBooking = new java.util.concurrent.ConcurrentHashMap<>();
@@ -248,7 +250,8 @@ public class WhatsAppWebhookController {
                 fromPhone,
                 prompt,
                 List.of(
-                        new WhatsAppClientService.ButtonOption("DISCOVER_INSTANT", "⚡ Instant Booking"),
+                        new WhatsAppClientService.ButtonOption("EXPRESS_BOOK", "⚡ Express OPD Token"),
+                        new WhatsAppClientService.ButtonOption("DISCOVER_INSTANT", "🏥 Choose Clinic"),
                         new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ View on Maps")
                 )
         );
@@ -259,7 +262,35 @@ public class WhatsAppWebhookController {
         if (body == null) return;
         String lower = body.toLowerCase().trim();
 
-        // 0. Greeting / First Interaction check (e.g. "hi", "hello", "hey", "start", "namaste", "help", "menu")
+        // 0. Language selection trigger
+        if (lower.equals("hindi") || lower.equals("हिंदी") || lower.equals("language") || lower.equals("bhasha") || lower.equals("भाषा") || lower.equals("bengali") || lower.equals("বাংলা")) {
+            promptLanguageSelection(fromPhone);
+            return;
+        }
+
+        // 0a. Express 1-tap booking command
+        if (lower.equals("express") || lower.equals("quick token") || lower.equals("express token") || lower.equals("urgent token")) {
+            handleExpressBooking(fromPhone);
+            return;
+        }
+
+        // 0b. Patient Medical Locker / Wardrobe link
+        if (lower.equals("locker") || lower.equals("records") || lower.equals("my records") || lower.equals("my reports") || lower.equals("wardrobe")) {
+            sendMedicalLockerLink(fromPhone);
+            return;
+        }
+
+        // 0c. Family member / dependent profile detection
+        if (lower.startsWith("book for") || lower.startsWith("patient:") || lower.startsWith("patient name:") || lower.contains("my mother") || lower.contains("my father") || lower.contains("my son") || lower.contains("my daughter") || lower.contains("my wife") || lower.contains("my husband")) {
+            String extracted = body.replaceAll("(?i)(book for my (mother|father|son|daughter|wife|husband|child|parent)|book for:|book for|patient name:|patient:)", "").trim();
+            if (!extracted.isBlank() && extracted.length() >= 2) {
+                userPatientNames.put(fromPhone, extracted);
+                whatsAppClient.sendTextMessage(fromPhone, "👤 *Patient Profile Set: " + extracted + "*\n\nAll subsequent OPD tokens and appointment slips will be issued in *" + extracted + "*'s name. Share your location pin or choose a hospital to proceed!");
+                return;
+            }
+        }
+
+        // 0d. Greeting / First Interaction check (e.g. "hi", "hello", "hey", "start", "namaste", "help", "menu")
         if (isGreeting(lower)) {
             sendCustomWelcomeMessage(fromPhone);
             return;
@@ -436,7 +467,23 @@ public class WhatsAppWebhookController {
             Map<String, Object> reply = (Map<String, Object>) interactive.get("button_reply");
             String buttonId = (String) reply.get("id");
 
-            if ("DISCOVER_INSTANT".equals(buttonId)) {
+            if ("EXPRESS_BOOK".equals(buttonId)) {
+                handleExpressBooking(fromPhone);
+                return;
+            } else if ("MY_RECORDS".equals(buttonId)) {
+                sendMedicalLockerLink(fromPhone);
+                return;
+            } else if (buttonId.startsWith("LANG_")) {
+                handleLanguageSelection(fromPhone, buttonId);
+                return;
+            } else if ("BOOK_SELF".equals(buttonId)) {
+                userPatientNames.remove(fromPhone);
+                whatsAppClient.sendTextMessage(fromPhone, "👤 Booking registered for *Myself*. Please select a hospital or specialist to proceed.");
+                return;
+            } else if ("BOOK_FAMILY".equals(buttonId)) {
+                whatsAppClient.sendTextMessage(fromPhone, "👨‍👩‍👧 *Booking for a Family Member*\n\nPlease text back the patient's name and relation, for example:\n👉 *\"Book for my mother Sita Devi\"* or *\"Patient: Rahul, age 6\"*");
+                return;
+            } else if ("DISCOVER_INSTANT".equals(buttonId)) {
                 handleDiscoverInstantBooking(fromPhone);
                 return;
             } else if ("DISCOVER_MAPS".equals(buttonId)) {
@@ -509,6 +556,89 @@ public class WhatsAppWebhookController {
                 reminderService.markBatchAsSnoozed(ids, 15);
                 whatsAppClient.sendTextMessage(fromPhone, "⏰ Snoozed for 15 minutes. We will remind you again!");
             }
+        }
+    }
+
+    private void handleExpressBooking(String fromPhone) {
+        double[] loc = getOrRestoreUserLocation(fromPhone);
+        if (loc == null) {
+            whatsAppClient.sendTextMessage(fromPhone, "📍 Please share your current location pin via WhatsApp first so we can find the closest open clinic!");
+            return;
+        }
+
+        String preferredDept = userTriageDept.getOrDefault(fromPhone, "General Medicine");
+        List<LocationService.NearbyHospitalResult> local = locationService.findLocalHospitalsWithSmartFallback(loc[0], loc[1], preferredDept);
+
+        if (local.isEmpty()) {
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ No partner clinics with open OPD slots found near your location today.");
+            return;
+        }
+
+        // Find first doctor with open tokens today
+        Doctor selectedDoctor = null;
+        for (LocationService.NearbyHospitalResult r : local) {
+            List<Doctor> docs = doctorRepository.findByHospitalId(r.hospital().getId());
+            for (Doctor d : docs) {
+                if (d.isAvailableToday() && d.isAvailableOnDay(LocalDate.now().getDayOfWeek())) {
+                    int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(d.getId(), LocalDate.now());
+                    if (booked < d.getDailyTokenLimit()) {
+                        selectedDoctor = d;
+                        break;
+                    }
+                }
+            }
+            if (selectedDoctor != null) break;
+        }
+
+        if (selectedDoctor == null) {
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ All doctor tokens near you are fully booked for today. Please pick another date or specialist.");
+            return;
+        }
+
+        bookAppointmentWithPreferredTime(fromPhone, selectedDoctor.getId(), LocalDate.now(), "DEFAULT");
+    }
+
+    private void sendMedicalLockerLink(String fromPhone) {
+        String safePhoneEncoded = java.net.URLEncoder.encode(fromPhone, java.nio.charset.StandardCharsets.UTF_8);
+        String recordsUrl = "https://mediassist-1hdl.onrender.com/my-records.html?phone=" + safePhoneEncoded;
+        String msg = String.format("""
+            📁 *PATIENT MEDICAL LOCKER & WARDROBE*
+            
+            Access all your past prescriptions, lab test reports, and OPD appointment slips in one secure web portal:
+            
+            👉 %s
+            
+            ✨ Features:
+            • View & download PDF appointment slips
+            • AI-analyzed prescription dosages & diagnosis
+            • Past lab test summaries
+            • Live daily medication alarm tracker
+            """, recordsUrl);
+        whatsAppClient.sendTextMessage(fromPhone, msg);
+    }
+
+    private void promptLanguageSelection(String fromPhone) {
+        whatsAppClient.sendInteractiveButtons(
+                fromPhone,
+                "🌐 *Select Your Preferred Language / अपनी भाषा चुनें:*\n\nPlease choose your language for WhatsApp assistance:",
+                List.of(
+                        new WhatsAppClientService.ButtonOption("LANG_EN", "🇬🇧 English"),
+                        new WhatsAppClientService.ButtonOption("LANG_HI", "🇮🇳 हिन्दी (Hindi)"),
+                        new WhatsAppClientService.ButtonOption("LANG_BN", "🇮🇳 বাংলা (Bengali)")
+                )
+        );
+    }
+
+    private void handleLanguageSelection(String fromPhone, String buttonId) {
+        if ("LANG_HI".equals(buttonId)) {
+            userLanguagePref.put(fromPhone, "HI");
+            whatsAppClient.sendTextMessage(fromPhone, "✅ *भाषा चुन ली गई: हिन्दी*\n\nनमस्ते! MediAssist में आपका स्वागत है।\n• OPD डॉक्टर टोकन बुक करने के लिए अपनी लोकेशन पिन साझा करें 📍\n• दवा का अलार्म सेट करने के लिए प्रिस्क्रिप्शन की फोटो भेजें 📄\n• तुरंत डॉक्टर टोकन के लिए *Express* लिखें ⚡");
+        } else if ("LANG_BN".equals(buttonId)) {
+            userLanguagePref.put(fromPhone, "BN");
+            whatsAppClient.sendTextMessage(fromPhone, "✅ *ভাষা নির্বাচন করা হয়েছে: বাংলা*\n\nনমস্কার! MediAssist-এ আপনাকে স্বাগতম।\n• ওপিডি ডাক্তার টোকেন বুক করতে আপনার লোকেশন পিন পাঠান 📍\n• প্রেসক্রিপশনের ছবি পাঠান ওষুধের অ্যালার্ম সেট করতে 📄");
+        } else {
+            userLanguagePref.put(fromPhone, "EN");
+            whatsAppClient.sendTextMessage(fromPhone, "✅ *Language Preference: English*\n\nWelcome to MediAssist Clinical Health Desk! Send symptoms, share your location pin to book an OPD token, or upload prescriptions.");
         }
     }
 
@@ -996,7 +1126,8 @@ public class WhatsAppWebhookController {
             qrToken = String.format("%06d", java.util.concurrent.ThreadLocalRandom.current().nextInt(100000, 1000000));
         } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
 
-        Appointment appointment = new Appointment(hospital, doctor, fromPhone, "Patient",
+        String patientName = userPatientNames.getOrDefault(fromPhone, "Patient");
+        Appointment appointment = new Appointment(hospital, doctor, fromPhone, patientName,
                 appointmentDate, timeSlotDescription, tokenNumber, qrToken);
 
         appointment = appointmentRepository.save(appointment);
@@ -1013,6 +1144,8 @@ public class WhatsAppWebhookController {
         }
 
         String pdfUrl = "https://mediassist-1hdl.onrender.com/api/v1/appointments/" + appointment.getId() + "/pdf";
+        String safePhoneEncoded = java.net.URLEncoder.encode(fromPhone, java.nio.charset.StandardCharsets.UTF_8);
+        String lockerUrl = "https://mediassist-1hdl.onrender.com/my-records.html?phone=" + safePhoneEncoded;
         String dateFormatted = appointmentDate.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy"));
 
         String noticeBlock = (match.noticeMessage() != null && !match.noticeMessage().isBlank())
@@ -1025,6 +1158,7 @@ public class WhatsAppWebhookController {
         String confirmation = String.format("""
             🎉 *OPD Consultation Confirmed!*
             
+            👤 *Patient:* %s
             🏥 *Hospital:* %s
             📍 *Address:* %s
             🧭 *Google Maps Directions:* %s
@@ -1040,11 +1174,15 @@ public class WhatsAppWebhookController {
             🔐 *Check-in PIN:* `%s`
             💵 *Consultation Fee:* ₹%d
             
-            📄 *Download A4 OP Case Sheet Slip:*
+            📄 *Download OP Case Sheet Slip:*
+            %s
+            
+            📁 *View in Patient Medical Locker:*
             %s
             
             _💡 Note: When you arrive, receptionist or doctor will scan the START QR code on your slip to begin consultation._
             """,
+                patientName,
                 hospital.getName(),
                 (hospital.getAddress() != null && !hospital.getAddress().isBlank()) ? hospital.getAddress().trim() : "Hospital Campus",
                 directionsUrl,
@@ -1059,7 +1197,8 @@ public class WhatsAppWebhookController {
                 noticeBlock,
                 qrToken,
                 (int) doctor.getConsultationFee(),
-                pdfUrl
+                pdfUrl,
+                lockerUrl
         );
 
         whatsAppClient.sendTextMessage(fromPhone, confirmation);
@@ -1256,6 +1395,11 @@ public class WhatsAppWebhookController {
                      .append(result.doctorNotes()).append("\n\n");
             }
 
+            if (result != null && result.safetyPrecautions() != null && !result.safetyPrecautions().isBlank()) {
+                reply.append("💡 *Clinical Safety & Dietary Precautions:*\n")
+                     .append(result.safetyPrecautions()).append("\n\n");
+            }
+
             reply.append("⏰ *Scheduled Doses (").append(count).append(" Alarms):*\n");
             for (String summary : reminderSummaries) {
                 reply.append(summary).append("\n");
@@ -1265,6 +1409,7 @@ public class WhatsAppWebhookController {
             String companionUrl = "https://mediassist-1hdl.onrender.com/alarms.html?phone=" + safePhoneEncoded;
             String icsUrl = "https://mediassist-1hdl.onrender.com/api/v1/reminders/calendar.ics?phone=" + safePhoneEncoded;
             String apkUrl = "https://mediassist-1hdl.onrender.com/MediAssistAlarms.apk";
+            String lockerUrl = "https://mediassist-1hdl.onrender.com/my-records.html?phone=" + safePhoneEncoded;
 
             reply.append("\n🔊 *RING REAL PHONE ALARM (NOT JUST WHATSAPP):*\n")
                  .append("To trigger physical ringtone alarms & vibration in your mobile Clock/Calendar:\n\n")
@@ -1275,12 +1420,14 @@ public class WhatsAppWebhookController {
                  .append("👉 ").append(companionUrl).append("\n\n")
                  .append("📅 *Option 3: 1-Tap Import to Device Calendar (.ics):*\n")
                  .append("👉 ").append(icsUrl).append("\n\n")
+                 .append("📁 *Option 4: View in Patient Medical Locker:*\n")
+                 .append("👉 ").append(lockerUrl).append("\n\n")
                  .append("🔔 _You will also receive automated WhatsApp reminder cards with [✅ Taken] and [⏰ Snooze 15m] buttons at dose times!_");
 
             List<WhatsAppClientService.ButtonOption> buttons = List.of(
                     new WhatsAppClientService.ButtonOption("REAL_ALARM_SYNC", "📱 Ring Phone Alarm"),
-                    new WhatsAppClientService.ButtonOption("MY_ALARMS", "💊 My Alarms"),
-                    new WhatsAppClientService.ButtonOption("CANCEL_ALARMS", "🛑 Stop Alarms")
+                    new WhatsAppClientService.ButtonOption("MY_RECORDS", "📁 Medical Locker"),
+                    new WhatsAppClientService.ButtonOption("MY_ALARMS", "💊 My Alarms")
             );
 
             boolean sent = whatsAppClient.sendInteractiveButtons(fromPhone, reply.toString(), buttons);

@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>My Medical Records & Wardrobe | MediAssist</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0284c7;
+            --primary-dark: #0369a1;
+            --primary-light: #e0f2fe;
+            --accent: #10b981;
+            --accent-glow: rgba(16, 185, 129, 0.25);
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --bg: #0b1120;
+            --card-bg: #131d32;
+            --card-border: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --radius-lg: 16px;
+            --radius-md: 10px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding-bottom: 40px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 520px;
+            padding: 16px;
+        }
+
+        /* Top Header */
+        .app-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            margin-bottom: 16px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .brand-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-logo {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #0284c7, #38bdf8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .brand-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.2;
+        }
+
+        .brand-sub {
+            font-size: 0.72rem;
+            color: #38bdf8;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .phone-chip {
+            background: #1e293b;
+            border: 1px solid #334155;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: #cbd5e1;
+        }
+
+        /* Phone search bar */
+        .phone-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .phone-input {
+            flex: 1;
+            padding: 12px 14px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            color: #fff;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .phone-input:focus {
+            border-color: var(--primary);
+        }
+
+        .btn-lookup {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-md);
+            padding: 0 16px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+
+        /* Navigation Tabs */
+        .tabs {
+            display: flex;
+            gap: 6px;
+            background: #0f172a;
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 4px;
+            margin-bottom: 18px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px 8px;
+            text-align: center;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            border-radius: 8px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: var(--card-bg);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Content Sections */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Record Cards */
+        .record-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            margin-bottom: 14px;
+            position: relative;
+            transition: transform 0.2s;
+        }
+
+        .record-card:hover {
+            transform: translateY(-2px);
+            border-color: #334155;
+        }
+
+        .record-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .record-token {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #38bdf8;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .record-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 3px;
+        }
+
+        .record-sub {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-confirmed {
+            background: rgba(2, 132, 199, 0.2);
+            color: #7dd3fc;
+            border: 1px solid rgba(2, 132, 199, 0.4);
+        }
+
+        .badge-checkedin {
+            background: rgba(16, 185, 129, 0.2);
+            color: #6ee7b7;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+
+        .badge-completed {
+            background: rgba(148, 163, 184, 0.2);
+            color: #cbd5e1;
+            border: 1px solid rgba(148, 163, 184, 0.4);
+        }
+
+        .badge-doc {
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+        }
+
+        .summary-box {
+            background: rgba(15, 23, 42, 0.7);
+            border-left: 3px solid #38bdf8;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 0.8rem;
+            color: #cbd5e1;
+            line-height: 1.5;
+            margin-bottom: 12px;
+            white-space: pre-line;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .btn-sm {
+            padding: 8px 14px;
+            border-radius: var(--radius-md);
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-blue {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #fff;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: #cbd5e1;
+            border: 1px solid #334155;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+        }
+
+        .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="brand-info">
+                <div class="brand-logo">📁</div>
+                <div>
+                    <div class="brand-title">Medical Locker</div>
+                    <div class="brand-sub">MediAssist Wardrobe</div>
+                </div>
+            </div>
+            <div class="phone-chip" id="active-phone-display">Loading...</div>
+        </header>
+
+        <!-- Search phone box (if not in URL or need switch) -->
+        <div class="phone-bar">
+            <input type="text" id="phone-input" class="phone-input" placeholder="Enter phone (e.g. +919876543210)">
+            <button class="btn-lookup" onclick="lookupPhone()">Load</button>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('appts')">📋 Appointments</button>
+            <button class="tab-btn" onclick="switchTab('docs')">📁 Prescriptions</button>
+            <button class="tab-btn" onclick="switchTab('meds')">💊 Alarms</button>
+        </div>
+
+        <!-- Tab 1: Appointments -->
+        <div id="tab-appts" class="tab-content active">
+            <div id="appts-container">Loading appointments...</div>
+        </div>
+
+        <!-- Tab 2: Prescriptions & Reports -->
+        <div id="tab-docs" class="tab-content">
+            <div id="docs-container">Loading medical documents...</div>
+        </div>
+
+        <!-- Tab 3: Active Medications -->
+        <div id="tab-meds" class="tab-content">
+            <div id="meds-container">Loading active reminders...</div>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        let phone = urlParams.get('phone') || '';
+
+        if (phone) {
+            document.getElementById('phone-input').value = phone;
+            document.getElementById('active-phone-display').innerText = phone;
+            fetchRecords(phone);
+        } else {
+            document.getElementById('active-phone-display').innerText = 'Enter Phone';
+            document.getElementById('appts-container').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📱</div>
+                    <h3>Enter Your WhatsApp Number</h3>
+                    <p>Type your 10-digit registered mobile number above to access your case sheets and lab reports.</p>
+                </div>
+            `;
+        }
+
+        function lookupPhone() {
+            const input = document.getElementById('phone-input').value.trim();
+            if (!input) return;
+            phone = input;
+            document.getElementById('active-phone-display').innerText = phone;
+            window.history.replaceState({}, '', '?phone=' + encodeURIComponent(phone));
+            fetchRecords(phone);
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            if (tab === 'appts') {
+                event.target.classList.add('active');
+                document.getElementById('tab-appts').classList.add('active');
+            } else if (tab === 'docs') {
+                event.target.classList.add('active');
+                document.getElementById('tab-docs').classList.add('active');
+            } else if (tab === 'meds') {
+                event.target.classList.add('active');
+                document.getElementById('tab-meds').classList.add('active');
+            }
+        }
+
+        async function fetchRecords(p) {
+            try {
+                const res = await fetch('/api/v1/appointments/patient/records?phone=' + encodeURIComponent(p));
+                if (!res.ok) throw new Error("Failed to load records");
+                const data = await res.json();
+                renderAppointments(data.appointments || []);
+                renderDocuments(data.documents || []);
+                renderMedications(data.medications || []);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('appts-container').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h3>Error Loading Records</h3><p>${err.message}</p></div>`;
+            }
+        }
+
+        function renderAppointments(appts) {
+            const container = document.getElementById('appts-container');
+            if (appts.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📋</div>
+                        <h3>No Appointments Found</h3>
+                        <p>You haven't booked any OPD tokens yet. Message MediAssist on WhatsApp to book!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = appts.map(a => `
+                <div class="record-card">
+                    <div class="record-header">
+                        <div>
+                            <span class="badge ${a.status === 'COMPLETED' ? 'badge-completed' : (a.status === 'CHECKED_IN' ? 'badge-checkedin' : 'badge-confirmed')}">
+                                ${a.status}
+                            </span>
+                            <div class="record-title" style="margin-top:6px;">👨‍⚕️ ${escapeHtml(a.doctorName)}</div>
+                            <div class="record-sub">${escapeHtml(a.department)} • ${escapeHtml(a.hospitalName)}</div>
+                        </div>
+                        <div class="record-token">#${String(a.tokenNumber).padStart(2, '0')}</div>
+                    </div>
+                    <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:12px;">
+                        📅 <strong>${a.appointmentDate}</strong> &nbsp;•&nbsp; 🚪 Room <strong>${a.roomNumber}</strong> &nbsp;•&nbsp; 👤 <strong>${escapeHtml(a.patientName)}</strong>
+                    </div>
+                    <div class="btn-group">
+                        <a href="${a.pdfUrl}" target="_blank" class="btn-sm btn-blue">
+                            📄 Download OP Slip
+                        </a>
+                        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.hospitalName)}" target="_blank" class="btn-sm btn-outline">
+                            🧭 Directions
+                        </a>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderDocuments(docs) {
+            const container = document.getElementById('docs-container');
+            if (docs.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">📁</div>
+                        <h3>Wardrobe is Empty</h3>
+                        <p>Upload your doctor prescription or lab test photo in WhatsApp chat to view it here!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = docs.map(d => `
+                <div class="record-card">
+                    <div class="record-header">
+                        <div>
+                            <span class="badge badge-doc">${d.documentType}</span>
+                            <div class="record-title" style="margin-top:6px;">📄 ${escapeHtml(d.fileName)}</div>
+                            <div class="record-sub">Uploaded: ${d.uploadedAt ? d.uploadedAt.replace('T', ' ').substring(0, 16) : 'Recent'}</div>
+                        </div>
+                    </div>
+                    ${d.aiSummary ? `<div class="summary-box"><strong>🔍 AI Clinical Summary:</strong><br>${escapeHtml(d.aiSummary)}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function renderMedications(meds) {
+            const container = document.getElementById('meds-container');
+            if (meds.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">💊</div>
+                        <h3>No Active Medication Reminders</h3>
+                        <p>Share a prescription on WhatsApp to automatically schedule daily alarms!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = `
+                <div style="margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:0.85rem; color:#94a3b8;">${meds.length} Active Alarms</span>
+                    <a href="/alarms.html?phone=${encodeURIComponent(phone)}" class="btn-sm btn-blue">
+                        ⏰ Open Alarm Companion
+                    </a>
+                </div>
+            ` + meds.map(m => `
+                <div class="record-card">
+                    <div class="record-header">
+                        <div>
+                            <div class="record-title">💊 ${escapeHtml(m.medicineName)}</div>
+                            <div class="record-sub">${escapeHtml(m.dosageInstruction || 'Daily dose')}</div>
+                        </div>
+                        <div class="record-token" style="font-size:1.1rem;">${m.formattedTime12h || m.reminderTime}</div>
+                    </div>
+                    <div style="font-size:0.75rem; color:#10b981;">
+                        Status: <strong>${m.status}</strong>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+    </script>
+</body>
+</html>
