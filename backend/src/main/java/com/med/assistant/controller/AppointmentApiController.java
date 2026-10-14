@@ -2,12 +2,17 @@ package com.med.assistant.controller;
 
 import com.med.assistant.model.Appointment;
 import com.med.assistant.repository.AppointmentRepository;
+import com.med.assistant.service.PatientAuthService;
+import com.med.assistant.service.RateLimitService;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 @RestController
 @RequestMapping("/api/v1/appointments")
@@ -22,6 +27,11 @@ public class AppointmentApiController {
     private final com.med.assistant.service.MedicationReminderService reminderService;
     private final com.med.assistant.repository.DoctorRepository doctorRepository;
     private final com.med.assistant.repository.HospitalRepository hospitalRepository;
+    private final PatientAuthService patientAuthService;
+    private final RateLimitService rateLimitService;
+
+    // Concurrency lock per doctor & date to prevent walk-in double-token issuance
+    private static final Map<String, ReentrantLock> DOCTOR_DATE_LOCKS = new ConcurrentHashMap<>();
 
     public AppointmentApiController(AppointmentRepository appointmentRepository,
                                     com.med.assistant.service.AppointmentSlipPdfService pdfService,
@@ -30,7 +40,9 @@ public class AppointmentApiController {
                                     com.med.assistant.service.ReportWardrobeService wardrobeService,
                                     com.med.assistant.service.MedicationReminderService reminderService,
                                     com.med.assistant.repository.DoctorRepository doctorRepository,
-                                    com.med.assistant.repository.HospitalRepository hospitalRepository) {
+                                    com.med.assistant.repository.HospitalRepository hospitalRepository,
+                                    PatientAuthService patientAuthService,
+                                    RateLimitService rateLimitService) {
         this.appointmentRepository = appointmentRepository;
         this.pdfService = pdfService;
         this.whatsAppClient = whatsAppClient;
@@ -39,6 +51,8 @@ public class AppointmentApiController {
         this.reminderService = reminderService;
         this.doctorRepository = doctorRepository;
         this.hospitalRepository = hospitalRepository;
+        this.patientAuthService = patientAuthService;
+        this.rateLimitService = rateLimitService;
     }
 
     private String cleanToken(String rawToken) {
@@ -399,6 +413,7 @@ public class AppointmentApiController {
 
     /**
      * Issue an instant Walk-in OPD Token at the reception desk.
+     * Hardened with Concurrency Locking & DB Collision Retry to eliminate Double-Booking.
      */
     @PostMapping("/walk-in")
     public ResponseEntity<?> createWalkInAppointment(@RequestBody WalkInRequest req) {
@@ -413,21 +428,72 @@ public class AppointmentApiController {
         com.med.assistant.model.Hospital hospital = doctor.getHospital();
 
         LocalDate today = LocalDate.now();
-        List<Appointment> bookedAppts = appointmentRepository.findByDoctorIdAndAppointmentDateOrderBySerialNumberAsc(doctor.getId(), today);
-        int nextSerial = bookedAppts.size() + 1;
+        String lockKey = doctor.getId() + "_" + today;
+        ReentrantLock lock = DOCTOR_DATE_LOCKS.computeIfAbsent(lockKey, k -> new ReentrantLock());
 
-        String qrToken;
-        do {
-            qrToken = String.format("%06d", java.util.concurrent.ThreadLocalRandom.current().nextInt(100000, 1000000));
-        } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
+        Appointment appt = null;
+        int nextSerial = 0;
+        String qrToken = "";
+        String safePhone = req.patientPhone().replaceAll("[^0-9+]", "").trim();
+        String rawPatientName = (req.patientName() != null && !req.patientName().isBlank()) ? req.patientName().trim() : "Walk-in Patient";
+        // Sanitize patient name against XSS & PDF rendering injection
+        String patientName = rawPatientName.replaceAll("[<>{}\"']", "").trim();
+        if (patientName.isBlank()) patientName = "Walk-in Patient";
 
-        String patientName = (req.patientName() != null && !req.patientName().isBlank()) ? req.patientName().trim() : "Walk-in Patient";
-        String timeSlot = (req.timeSlot() != null && !req.timeSlot().isBlank()) ? req.timeSlot().trim() : "Walk-in Priority";
+        String rawTimeSlot = (req.timeSlot() != null && !req.timeSlot().isBlank()) ? req.timeSlot().trim() : "Walk-in Priority";
+        String timeSlot = rawTimeSlot.replaceAll("[<>{}\"']", "").trim();
 
-        Appointment appt = new Appointment(hospital, doctor, req.patientPhone().trim(), patientName,
-                today, timeSlot, nextSerial, qrToken);
-        appt.setStatus(Appointment.Status.CHECKED_IN);
-        appt = appointmentRepository.save(appt);
+        lock.lock();
+        try {
+            int maxAttempts = 3;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                List<Appointment> bookedAppts = appointmentRepository.findByDoctorIdAndAppointmentDateOrderBySerialNumberAsc(doctor.getId(), today);
+                Set<Integer> bookedTokens = new HashSet<>();
+                for (Appointment a : bookedAppts) {
+                    if (a.getStatus() != Appointment.Status.CANCELLED) {
+                        bookedTokens.add(a.getSerialNumber());
+                    }
+                }
+
+                nextSerial = 1;
+                while (bookedTokens.contains(nextSerial)) {
+                    nextSerial++;
+                }
+
+                if (doctor.getDailyTokenLimit() > 0 && nextSerial > doctor.getDailyTokenLimit()) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                            "success", false,
+                            "message", "Doctor " + doctor.getName() + " has reached the daily limit of " + doctor.getDailyTokenLimit() + " tokens."
+                    ));
+                }
+
+                do {
+                    qrToken = String.format("%06d", java.util.concurrent.ThreadLocalRandom.current().nextInt(100000, 1000000));
+                } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
+
+                Appointment candidate = new Appointment(hospital, doctor, safePhone, patientName,
+                        today, timeSlot, nextSerial, qrToken);
+                candidate.setStatus(Appointment.Status.CHECKED_IN);
+
+                try {
+                    appt = appointmentRepository.saveAndFlush(candidate);
+                    break;
+                } catch (DataIntegrityViolationException dive) {
+                    if (attempt == maxAttempts) {
+                        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                                "success", false,
+                                "message", "Token slot contention detected. Please retry issuing token."
+                        ));
+                    }
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+
+        if (appt == null) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Failed to allocate token"));
+        }
 
         try {
             pdfService.generatePdfSlip(appt);
@@ -459,7 +525,7 @@ public class AppointmentApiController {
                 today.toString(),
                 pdfUrl
             );
-            whatsAppClient.sendTextMessage(req.patientPhone().trim(), msg);
+            whatsAppClient.sendTextMessage(safePhone, msg);
         } catch (Exception we) {
             // non-blocking
         }
@@ -470,7 +536,7 @@ public class AppointmentApiController {
                 "appointmentId", appt.getId(),
                 "serialNumber", nextSerial,
                 "patientName", patientName,
-                "patientPhone", req.patientPhone().trim(),
+                "patientPhone", safePhone,
                 "qrCodeToken", qrToken,
                 "pdfUrl", "/api/v1/appointments/" + appt.getId() + "/pdf"
         ));
@@ -478,11 +544,31 @@ public class AppointmentApiController {
 
     /**
      * Patient Medical Locker API: returns appointments, prescriptions/lab documents, and active medications.
+     * Hardened with WhatsApp OTP Session Verification to guarantee patient medical privacy (HIPAA / DPDP Act).
      */
     @GetMapping("/patient/records")
-    public ResponseEntity<?> getPatientMedicalRecords(@RequestParam String phone) {
+    public ResponseEntity<?> getPatientMedicalRecords(
+            @RequestParam String phone,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestParam(value = "token", required = false) String tokenParam) {
+
         if (phone == null || phone.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Phone number is required"));
+        }
+
+        // Extract session token
+        String token = tokenParam;
+        if ((token == null || token.isBlank()) && authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7).trim();
+        }
+
+        // WhatsApp OTP gatekeeper validation
+        if (!patientAuthService.validateToken(token, phone)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "success", false,
+                    "error", "UNAUTHORIZED",
+                    "message", "WhatsApp OTP verification required to access patient medical records."
+            ));
         }
         String cleanPhone = phone.trim();
         Set<String> variants = new HashSet<>();

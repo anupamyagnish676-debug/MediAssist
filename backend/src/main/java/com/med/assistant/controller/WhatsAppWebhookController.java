@@ -10,16 +10,25 @@ import com.med.assistant.repository.DoctorRepository;
 import com.med.assistant.repository.HospitalRepository;
 import com.med.assistant.repository.PatientSessionRepository;
 import com.med.assistant.service.*;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 @RestController
 @RequestMapping("/api/v1/whatsapp")
@@ -42,6 +51,9 @@ public class WhatsAppWebhookController {
     @Value("${app.whatsapp.verify-token}")
     private String verifyToken;
 
+    @Value("${app.whatsapp.app-secret:}")
+    private String appSecret;
+
     private final WhatsAppClientService whatsAppClient;
     private final LocationService locationService;
     private final GeminiAiService geminiAiService;
@@ -54,15 +66,21 @@ public class WhatsAppWebhookController {
     private final ExternalHospitalService externalHospitalService;
     private final PatientSessionRepository patientSessionRepository;
     private final OpdScheduleService opdScheduleService;
-    private final Map<String, String> userTriageDept = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Map<String, double[]> userLocation = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Map<String, Long> userPendingDoctorBooking = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Map<String, List<Long>> userRecentHospitals = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Map<String, String> userPatientNames = new java.util.concurrent.ConcurrentHashMap<>();
-    private final Map<String, String> userLanguagePref = new java.util.concurrent.ConcurrentHashMap<>();
+    private final RateLimitService rateLimitService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // Fine-grained concurrency lock per doctor & date to eliminate double-booking race conditions
+    private static final Map<String, ReentrantLock> DOCTOR_DATE_LOCKS = new ConcurrentHashMap<>();
+
+    private final Map<String, String> userTriageDept = new ConcurrentHashMap<>();
+    private final Map<String, double[]> userLocation = new ConcurrentHashMap<>();
+    private final Map<String, Long> userPendingDoctorBooking = new ConcurrentHashMap<>();
+    private final Map<String, List<Long>> userRecentHospitals = new ConcurrentHashMap<>();
+    private final Map<String, String> userPatientNames = new ConcurrentHashMap<>();
+    private final Map<String, String> userLanguagePref = new ConcurrentHashMap<>();
 
     public record PendingTimeBooking(Long doctorId, LocalDate chosenDate) {}
-    private final Map<String, PendingTimeBooking> userPendingTimeBooking = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<String, PendingTimeBooking> userPendingTimeBooking = new ConcurrentHashMap<>();
 
     public WhatsAppWebhookController(WhatsAppClientService whatsAppClient,
                                      LocationService locationService,
@@ -75,7 +93,8 @@ public class WhatsAppWebhookController {
                                      AppointmentRepository appointmentRepository,
                                      ExternalHospitalService externalHospitalService,
                                      PatientSessionRepository patientSessionRepository,
-                                     OpdScheduleService opdScheduleService) {
+                                     OpdScheduleService opdScheduleService,
+                                     RateLimitService rateLimitService) {
         this.whatsAppClient = whatsAppClient;
         this.locationService = locationService;
         this.geminiAiService = geminiAiService;
@@ -88,6 +107,7 @@ public class WhatsAppWebhookController {
         this.externalHospitalService = externalHospitalService;
         this.patientSessionRepository = patientSessionRepository;
         this.opdScheduleService = opdScheduleService;
+        this.rateLimitService = rateLimitService;
     }
 
     /**
@@ -124,10 +144,21 @@ public class WhatsAppWebhookController {
 
     /**
      * Inbound WhatsApp Message Handler.
+     * Hardened with Meta HMAC-SHA256 Webhook Signature Verification and Anti-Spam Rate Limiting.
      */
     @PostMapping("/webhook")
-    public ResponseEntity<String> handleInboundMessage(@RequestBody Map<String, Object> payload) {
+    public ResponseEntity<String> handleInboundMessage(
+            @RequestHeader(value = "X-Hub-Signature-256", required = false) String signatureHeader,
+            @RequestBody String rawPayload) {
+
+        // 1. Meta Webhook Signature Verification (HMAC-SHA256)
+        if (!isValidSignature(rawPayload, signatureHeader)) {
+            logger.warn("Security Alert: Invalid or missing X-Hub-Signature-256 header. Rejected untrusted webhook delivery.");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid signature");
+        }
+
         try {
+            Map<String, Object> payload = objectMapper.readValue(rawPayload, new TypeReference<Map<String, Object>>() {});
             logger.info("Received WhatsApp webhook payload: {}", payload);
 
             List<Map<String, Object>> entries = (List<Map<String, Object>>) payload.get("entry");
@@ -156,6 +187,12 @@ public class WhatsAppWebhookController {
                 }
             }
 
+            // Rate Limit per phone: protect backend from burst flood / spam attacks
+            if (fromPhone != null && !rateLimitService.tryAcquireWebhookMessage(fromPhone)) {
+                logger.warn("Rate limit exceeded for WhatsApp webhook messages from: {}", fromPhone);
+                return ResponseEntity.ok("EVENT_RECEIVED");
+            }
+
             dispatchMessage(fromPhone, messageType, message);
 
         } catch (Exception e) {
@@ -163,6 +200,41 @@ public class WhatsAppWebhookController {
         }
 
         return ResponseEntity.ok("EVENT_RECEIVED");
+    }
+
+    /**
+     * Validates Meta X-Hub-Signature-256 HMAC-SHA256 signature using constant-time comparison.
+     */
+    private boolean isValidSignature(String rawPayload, String signatureHeader) {
+        if (appSecret == null || appSecret.isBlank()) {
+            return true; // Secret not configured (e.g. dev mode without Meta credentials)
+        }
+        if (signatureHeader == null || !signatureHeader.startsWith("sha256=")) {
+            logger.warn("Webhook rejected: missing or malformed X-Hub-Signature-256 header");
+            return false;
+        }
+
+        try {
+            String expectedHash = signatureHeader.substring(7).trim();
+            Mac mac = Mac.getInstance("HmacSHA256");
+            SecretKeySpec secretKey = new SecretKeySpec(appSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
+            mac.init(secretKey);
+            byte[] hmacBytes = mac.doFinal(rawPayload.getBytes(StandardCharsets.UTF_8));
+
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hmacBytes) {
+                sb.append(String.format("%02x", b));
+            }
+            String actualHash = sb.toString();
+
+            return MessageDigest.isEqual(
+                    actualHash.getBytes(StandardCharsets.UTF_8),
+                    expectedHash.getBytes(StandardCharsets.UTF_8)
+            );
+        } catch (Exception e) {
+            logger.error("Error calculating HMAC-SHA256 for webhook payload: {}", e.getMessage(), e);
+            return false;
+        }
     }
 
     private void dispatchMessage(String fromPhone, String type, Map<String, Object> message) {
@@ -1105,32 +1177,74 @@ public class WhatsAppWebhookController {
     }
 
     private void bookAppointmentWithPreferredTime(String fromPhone, Long doctorId, LocalDate appointmentDate, String userTimeOrShift) {
-        Doctor doctor = doctorRepository.findById(doctorId).orElseThrow();
-        Hospital hospital = doctor.getHospital();
-
-        List<Appointment> bookedAppts = appointmentRepository.findByDoctorIdAndAppointmentDateOrderBySerialNumberAsc(doctorId, appointmentDate);
-        OpdScheduleService.SlotMatchResult match = opdScheduleService.findNearestAvailableSlot(doctor, appointmentDate, bookedAppts, userTimeOrShift);
-
-        if (match == null) {
-            promptSlotsFullAndShowAlternatives(fromPhone, doctor, appointmentDate);
+        // Anti-abuse rate limiting: Max 10 bookings per phone per hour
+        if (!rateLimitService.tryAcquireAppointmentBooking(fromPhone)) {
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ *Booking Rate Limit Reached*\n\nTo ensure fair access for all patients, you can book up to 10 tokens per hour. Please wait a bit before requesting a new token.");
             return;
         }
 
-        OpdScheduleService.DoctorSlot slot = match.slot();
-        int tokenNumber = slot.slotNumber();
-        String timeSlotDescription = slot.timeWindow() + " (" + slot.shiftName() + ")";
+        Doctor doctor = doctorRepository.findById(doctorId).orElseThrow();
+        Hospital hospital = doctor.getHospital();
 
-        // Generate clean random 6-digit PIN (e.g. 849201)
-        String qrToken;
-        do {
-            qrToken = String.format("%06d", java.util.concurrent.ThreadLocalRandom.current().nextInt(100000, 1000000));
-        } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
+        String lockKey = doctorId + "_" + appointmentDate;
+        ReentrantLock lock = DOCTOR_DATE_LOCKS.computeIfAbsent(lockKey, k -> new ReentrantLock());
 
-        String patientName = userPatientNames.getOrDefault(fromPhone, "Patient");
-        Appointment appointment = new Appointment(hospital, doctor, fromPhone, patientName,
-                appointmentDate, timeSlotDescription, tokenNumber, qrToken);
+        Appointment appointment = null;
+        OpdScheduleService.SlotMatchResult match = null;
+        OpdScheduleService.DoctorSlot slot = null;
+        int tokenNumber = 0;
+        String patientName = "Patient";
+        String qrToken = "";
 
-        appointment = appointmentRepository.save(appointment);
+        lock.lock();
+        try {
+            int maxAttempts = 3;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                List<Appointment> bookedAppts = appointmentRepository.findByDoctorIdAndAppointmentDateOrderBySerialNumberAsc(doctorId, appointmentDate);
+                match = opdScheduleService.findNearestAvailableSlot(doctor, appointmentDate, bookedAppts, userTimeOrShift);
+
+                if (match == null) {
+                    promptSlotsFullAndShowAlternatives(fromPhone, doctor, appointmentDate);
+                    return;
+                }
+
+                slot = match.slot();
+                tokenNumber = slot.slotNumber();
+                String timeSlotDescription = slot.timeWindow() + " (" + slot.shiftName() + ")";
+
+                // Generate clean random 6-digit PIN (e.g. 849201)
+                do {
+                    qrToken = String.format("%06d", java.util.concurrent.ThreadLocalRandom.current().nextInt(100000, 1000000));
+                } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
+
+                String rawPatientName = userPatientNames.getOrDefault(fromPhone, "Patient");
+                // Input sanitization: Strip HTML and dangerous characters to protect PDFBox and web views
+                patientName = rawPatientName.replaceAll("[<>{}\"']", "").trim();
+                if (patientName.isBlank()) patientName = "Patient";
+
+                Appointment candidate = new Appointment(hospital, doctor, fromPhone, patientName,
+                        appointmentDate, timeSlotDescription, tokenNumber, qrToken);
+
+                try {
+                    appointment = appointmentRepository.saveAndFlush(candidate);
+                    break; // Successfully booked without race condition
+                } catch (DataIntegrityViolationException dive) {
+                    logger.warn("Race condition collision detected on token #{} for doctor {} on {}. Retrying attempt {}/{}",
+                            tokenNumber, doctorId, appointmentDate, attempt, maxAttempts);
+                    if (attempt == maxAttempts) {
+                        promptSlotsFullAndShowAlternatives(fromPhone, doctor, appointmentDate);
+                        return;
+                    }
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+
+        if (appointment == null || slot == null || match == null) {
+            promptSlotsFullAndShowAlternatives(fromPhone, doctor, appointmentDate);
+            return;
+        }
 
         // Clear any pending date/time booking states
         userPendingDoctorBooking.remove(fromPhone);
@@ -1246,7 +1360,7 @@ public class WhatsAppWebhookController {
             // Format: DOC_RATE_{stars}_{apptId}
             String payload = rateId.replace("DOC_RATE_", "");
             String[] parts = payload.split("_");
-            int stars = Integer.parseInt(parts[0]);
+            int stars = Math.max(1, Math.min(5, Integer.parseInt(parts[0])));
             Long apptId = Long.parseLong(parts[1]);
 
             Appointment appt = appointmentRepository.findById(apptId).orElse(null);

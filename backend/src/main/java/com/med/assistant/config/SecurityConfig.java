@@ -30,12 +30,13 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable())
-            .headers(headers -> headers.frameOptions(frame -> frame.disable())) // Allows PDF & TV screen embeds
+            .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin())) // Clickjacking protection while allowing same-origin embeds
             .securityContext(context -> context.securityContextRepository(securityContextRepository()))
             .authorizeHttpRequests(auth -> auth
                 // Public Authentication Endpoints
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/v1/apply/**").permitAll()
+                .requestMatchers("/api/v1/patient/otp/**").permitAll()
 
                 // Public WhatsApp & Patient Simulator Endpoints
                 .requestMatchers("/api/v1/whatsapp/**").permitAll()
