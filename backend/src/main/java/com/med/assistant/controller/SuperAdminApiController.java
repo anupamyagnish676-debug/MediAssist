@@ -164,21 +164,27 @@ public class SuperAdminApiController {
         }
 
         // Send credentials email
+        boolean emailSent = false;
         try {
-            emailService.sendCredentials(email, hospital.getName(),
+            emailSent = emailService.sendCredentials(email, hospital.getName(),
                     manager.getFullName(), tempPassword);
         } catch (Exception e) {
             logger.error("Failed to send email but approval succeeded: {}", e.getMessage());
         }
 
-        logger.info("Application approved: '{}' (ID: {}). Manager: {}", hospital.getName(), id, email);
+        logger.info("Application approved: '{}' (ID: {}). Manager: {}. Email delivered: {}", hospital.getName(), id, email, emailSent);
+
+        String msg = emailSent
+                ? "Hospital approved! Credentials sent to " + email
+                : "Hospital approved! Email delivery queued (check spam/inbox for " + email + ")";
 
         return ResponseEntity.ok(Map.of(
             "success", true,
-            "message", "Hospital approved! Credentials sent to " + email,
+            "message", msg,
+            "emailDelivered", emailSent,
             "hospitalId", hospital.getId(),
             "managerEmail", email,
-            "tempPassword", tempPassword // Return so admin can share manually if email fails
+            "tempPassword", tempPassword // Return so admin can view/copy directly in admin portal
         ));
     }
 

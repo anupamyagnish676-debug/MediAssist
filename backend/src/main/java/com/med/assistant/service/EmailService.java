@@ -65,9 +65,11 @@ public class EmailService {
     /**
      * Send welcome email with login credentials to a newly approved hospital admin.
      */
-    public void sendCredentials(String toEmail, String hospitalName, String fullName, String tempPassword) {
+    public boolean sendCredentials(String toEmail, String hospitalName, String fullName, String tempPassword) {
+        if (toEmail == null || toEmail.isBlank()) return false;
+        String cleanEmail = toEmail.trim().toLowerCase();
         try {
-            String subject = "Welcome to MediAssist — Your Hospital Portal Credentials";
+            String subject = "Welcome to MediAssist - Your Hospital Portal Credentials";
             String body = """
                 <html>
                 <body style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111827;">
@@ -97,7 +99,7 @@ public class EmailService {
                             </table>
                         </div>
                         
-                        <p style="color: #DC2626; font-weight: 600;">⚠ Please change your password after first login.</p>
+                        <p style="color: #DC2626; font-weight: 600;">Please change your password after first login.</p>
                         
                         <h3>What you can do:</h3>
                         <ul style="color: #4B5563; line-height: 1.8;">
@@ -108,28 +110,36 @@ public class EmailService {
                             <li>Use the reception QR check-in system</li>
                         </ul>
                         
-                        <a href="%s/login.html" style="display: inline-block; background: #0066FF; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 10px;">Login to Your Portal →</a>
+                        <a href="%s/login.html" style="display: inline-block; background: #0066FF; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 10px;">Login to Your Portal &rarr;</a>
                         
                         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
                         <p style="font-size: 12px; color: #9CA3AF;">This is an automated email from MediAssist. If you did not apply, please ignore this email.</p>
                     </div>
                 </body>
                 </html>
-                """.formatted(fullName, hospitalName, baseUrl, baseUrl, toEmail, tempPassword, baseUrl);
+                """.formatted(fullName != null ? fullName : "Hospital Administrator", hospitalName, baseUrl, baseUrl, cleanEmail, tempPassword, baseUrl);
 
-            sendHtmlEmail(toEmail, subject, body);
-            logger.info("Credentials email dispatched to {} for hospital '{}'", toEmail, hospitalName);
+            boolean sent = sendHtmlEmail(cleanEmail, subject, body);
+            if (sent) {
+                logger.info("Credentials email dispatched successfully to {} for hospital '{}'", cleanEmail, hospitalName);
+            } else {
+                logger.warn("Credentials email could not be delivered to {}", cleanEmail);
+            }
+            return sent;
         } catch (Exception e) {
-            logger.error("Failed to dispatch credentials email to {}: {}", toEmail, e.getMessage(), e);
+            logger.error("Failed to dispatch credentials email to {}: {}", cleanEmail, e.getMessage(), e);
+            return false;
         }
     }
 
     /**
      * Send rejection email to a hospital applicant.
      */
-    public void sendRejection(String toEmail, String hospitalName, String contactName, String reason) {
+    public boolean sendRejection(String toEmail, String hospitalName, String contactName, String reason) {
+        if (toEmail == null || toEmail.isBlank()) return false;
+        String cleanEmail = toEmail.trim().toLowerCase();
         try {
-            String subject = "MediAssist Application Update — " + hospitalName;
+            String subject = "MediAssist Application Update - " + hospitalName;
             String body = """
                 <html>
                 <body style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111827;">
@@ -148,49 +158,56 @@ public class EmailService {
                         <p>You are welcome to reapply after addressing the above concerns. If you have questions, please contact our support team.</p>
                         
                         <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 25px 0;">
-                        <p style="font-size: 12px; color: #9CA3AF;">MediAssist — AI-Powered Hospital Operations Platform</p>
+                        <p style="font-size: 12px; color: #9CA3AF;">MediAssist - AI-Powered Hospital Operations Platform</p>
                     </div>
                 </body>
                 </html>
-                """.formatted(contactName, hospitalName, reason != null ? reason : "Application does not meet our current requirements.");
+                """.formatted(contactName != null ? contactName : "Hospital Applicant", hospitalName, reason != null ? reason : "Application does not meet our current requirements.");
 
-            sendHtmlEmail(toEmail, subject, body);
-            logger.info("Rejection email dispatched to {} for hospital '{}'", toEmail, hospitalName);
+            return sendHtmlEmail(cleanEmail, subject, body);
         } catch (Exception e) {
-            logger.error("Failed to dispatch rejection email to {}: {}", toEmail, e.getMessage(), e);
+            logger.error("Failed to dispatch rejection email to {}: {}", cleanEmail, e.getMessage(), e);
+            return false;
         }
     }
 
-    private void sendHtmlEmail(String to, String subject, String htmlBody) throws Exception {
+    private boolean sendHtmlEmail(String to, String subject, String htmlBody) {
         if (brevoApiKey == null || brevoApiKey.isBlank()) {
             logger.warn("Brevo API key not configured. Skipping email to {}", to);
-            return;
+            return false;
         }
 
-        Map<String, Object> payload = Map.of(
-            "sender", Map.of("name", senderName, "email", senderEmail),
-            "to", List.of(Map.of("email", to)),
-            "subject", subject,
-            "htmlContent", htmlBody
-        );
+        try {
+            Map<String, Object> payload = Map.of(
+                "sender", Map.of("name", senderName, "email", senderEmail),
+                "to", List.of(Map.of("email", to)),
+                "subject", subject,
+                "htmlContent", htmlBody
+            );
 
-        String jsonPayload = objectMapper.writeValueAsString(payload);
+            String jsonPayload = objectMapper.writeValueAsString(payload);
 
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
-                .header("api-key", brevoApiKey.trim())
-                .header("Content-Type", "application/json")
-                .header("User-Agent", "MediAssist/1.0")
-                .timeout(Duration.ofSeconds(15))
-                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                .build();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
+                    .header("api-key", brevoApiKey.trim())
+                    .header("Content-Type", "application/json")
+                    .header("User-Agent", "MediAssist/1.0")
+                    .timeout(Duration.ofSeconds(15))
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonPayload, StandardCharsets.UTF_8))
+                    .build();
 
-        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-        if (response.statusCode() >= 200 && response.statusCode() < 300) {
-            logger.info("Email delivered via Brevo HTTPS API to {}: {}", to, response.body());
-        } else {
-            logger.error("Brevo API returned error for {}: status={}, body={}", to, response.statusCode(), response.body());
+            if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                logger.info("Email delivered via Brevo HTTPS API to {}: {}", to, response.body());
+                return true;
+            } else {
+                logger.error("Brevo API returned error for {}: status={}, body={}", to, response.statusCode(), response.body());
+                return false;
+            }
+        } catch (Exception e) {
+            logger.error("Exception sending email to {}: {}", to, e.getMessage(), e);
+            return false;
         }
     }
 }

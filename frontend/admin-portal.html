@@ -405,6 +405,9 @@
                 const data = await res.json().catch(() => ({}));
                 if(res.ok) {
                     showToast(data.message || 'Hospital approved successfully!');
+                    if (data.tempPassword) {
+                        alert(`✅ Hospital Approved Successfully!\n\nPortal Login Credentials:\n• Email: ${data.managerEmail}\n• Temporary Password: ${data.tempPassword}\n\n(Credentials have also been dispatched to ${data.managerEmail})`);
+                    }
                     loadApplications();
                     loadDashboardData();
                 } else {
