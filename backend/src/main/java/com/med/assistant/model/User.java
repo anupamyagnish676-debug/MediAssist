@@ -19,6 +19,7 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    private String name;
     private String fullName;
     private String phoneNumber;
 
@@ -46,6 +47,7 @@ public class User {
         this.email = email.toLowerCase().trim();
         this.password = password;
         this.fullName = fullName;
+        this.name = fullName;
         this.role = role;
         this.hospital = hospital;
         this.active = true;
@@ -61,8 +63,27 @@ public class User {
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
 
-    public String getFullName() { return fullName; }
-    public void setFullName(String fullName) { this.fullName = fullName; }
+    public String getName() {
+        return name != null && !name.isBlank() ? name : fullName;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+        if (this.fullName == null || this.fullName.isBlank()) {
+            this.fullName = name;
+        }
+    }
+
+    public String getFullName() {
+        return fullName != null && !fullName.isBlank() ? fullName : name;
+    }
+
+    public void setFullName(String fullName) {
+        this.fullName = fullName;
+        if (this.name == null || this.name.isBlank()) {
+            this.name = fullName;
+        }
+    }
 
     public String getPhoneNumber() { return phoneNumber; }
     public void setPhoneNumber(String phoneNumber) { this.phoneNumber = phoneNumber; }

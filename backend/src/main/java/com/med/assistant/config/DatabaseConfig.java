@@ -135,6 +135,11 @@ public class DatabaseConfig {
                 stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE';");
 
                 // Users table columns
+                stmt.execute("ALTER TABLE users ALTER COLUMN name DROP NOT NULL;");
+                stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255);");
+                stmt.execute("ALTER TABLE users ALTER COLUMN full_name DROP NOT NULL;");
+                stmt.execute("UPDATE users SET name = full_name WHERE name IS NULL AND full_name IS NOT NULL;");
+                stmt.execute("UPDATE users SET full_name = name WHERE full_name IS NULL AND name IS NOT NULL;");
                 stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(255);");
                 stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;");
                 stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP;");
