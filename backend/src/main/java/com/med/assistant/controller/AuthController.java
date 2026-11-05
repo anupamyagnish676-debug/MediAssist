@@ -2,6 +2,8 @@ package com.med.assistant.controller;
 
 import com.med.assistant.model.User;
 import com.med.assistant.repository.UserRepository;
+import com.med.assistant.service.AuditLogService;
+import com.med.assistant.service.LoginAttemptService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -26,13 +28,19 @@ public class AuthController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final SecurityContextRepository securityContextRepository;
+    private final LoginAttemptService loginAttemptService;
+    private final AuditLogService auditLogService;
 
     public AuthController(UserRepository userRepository,
                           PasswordEncoder passwordEncoder,
-                          SecurityContextRepository securityContextRepository) {
+                          SecurityContextRepository securityContextRepository,
+                          LoginAttemptService loginAttemptService,
+                          AuditLogService auditLogService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.securityContextRepository = securityContextRepository;
+        this.loginAttemptService = loginAttemptService;
+        this.auditLogService = auditLogService;
     }
 
     public record LoginRequest(String email, String password) {}
@@ -54,22 +62,41 @@ public class AuthController {
             return ResponseEntity.badRequest().body(Map.of("message", "Email and password are required."));
         }
 
-        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(req.email().trim());
+        String username = req.email().trim();
+        String clientIp = extractClientIp(request);
+
+        if (loginAttemptService.isLocked(username)) {
+            long remaining = loginAttemptService.getLockoutRemainingSeconds(username);
+            long minutes = Math.max(1, (remaining + 59) / 60);
+            auditLogService.log(AuditLogService.AuditEvent.LOGIN_LOCKED, username,
+                    "Account locked out due to multiple failed login attempts. Remaining seconds: " + remaining, clientIp);
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body(Map.of("message", "Account is temporarily locked due to too many failed login attempts. Please try again in " + minutes + " minute(s)."));
+        }
+
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(username);
         boolean passwordMatches = userOpt.isPresent() && (
                 passwordEncoder.matches(req.password(), userOpt.get().getPassword()) ||
                 passwordEncoder.matches(req.password().trim(), userOpt.get().getPassword())
         );
 
         if (userOpt.isEmpty() || !passwordMatches) {
+            loginAttemptService.recordFailure(username);
+            auditLogService.log(AuditLogService.AuditEvent.LOGIN_FAILED, username, "Invalid email or password", clientIp);
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "Invalid email or password."));
         }
 
         User user = userOpt.get();
         if (!user.isActive()) {
+            loginAttemptService.recordFailure(username);
+            auditLogService.log(AuditLogService.AuditEvent.LOGIN_FAILED, username, "Account is deactivated", clientIp);
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("message", "This account has been deactivated."));
         }
+
+        loginAttemptService.recordSuccess(username);
+        auditLogService.log(AuditLogService.AuditEvent.LOGIN_SUCCESS, username, "User login successful for role " + user.getRole().name(), clientIp);
 
         // Record last login
         user.setLastLoginAt(LocalDateTime.now());
@@ -95,6 +122,16 @@ public class AuthController {
         );
 
         return ResponseEntity.ok(profile);
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isBlank() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        } else if (ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
     }
 
     @GetMapping("/me")

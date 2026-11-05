@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static com.med.assistant.service.AuditLogService.AuditEvent.*;
+
 /**
  * Service providing HIPAA & DPDP Act compliant patient authentication:
  * - Generates cryptographically secure 6-digit one-time passcodes (OTP).
@@ -28,6 +30,7 @@ public class PatientAuthService {
 
     private final WhatsAppClientService whatsAppClient;
     private final RateLimitService rateLimitService;
+    private final AuditLogService auditLog;
 
     @Value("${app.security.locker-secret:MediAssist_Patient_Medical_Locker_Secret_HMAC_Key_2026!}")
     private String lockerSecret;
@@ -41,8 +44,15 @@ public class PatientAuthService {
     private static final long SESSION_VALIDITY_MILLIS = 2 * 3600 * 1000L;  // 2 hours
 
     public PatientAuthService(WhatsAppClientService whatsAppClient, RateLimitService rateLimitService) {
+        this(whatsAppClient, rateLimitService, new AuditLogService());
+    }
+
+    public PatientAuthService(WhatsAppClientService whatsAppClient,
+                              RateLimitService rateLimitService,
+                              AuditLogService auditLog) {
         this.whatsAppClient = whatsAppClient;
         this.rateLimitService = rateLimitService;
+        this.auditLog = auditLog != null ? auditLog : new AuditLogService();
     }
 
     /**
@@ -72,6 +82,7 @@ public class PatientAuthService {
         // Rate limit: Max 3 OTP requests per phone every 5 minutes
         if (!rateLimitService.tryAcquire("OTP_REQUEST:" + canonicalPhone, 3, 300)) {
             logger.warn("OTP request rate limit hit for phone: {}", canonicalPhone);
+            auditLog.log(OTP_RATE_LIMITED, phone, "Too many OTP requests");
             return false;
         }
 
@@ -100,6 +111,7 @@ public class PatientAuthService {
         try {
             whatsAppClient.sendTextMessage(sendPhone, message);
             logger.info("Successfully dispatched WhatsApp OTP to {}", sendPhone);
+            auditLog.log(OTP_REQUESTED, phone, "OTP dispatched via WhatsApp");
             return true;
         } catch (Exception e) {
             logger.error("Failed to send WhatsApp OTP to {}: {}", sendPhone, e.getMessage(), e);
@@ -124,23 +136,28 @@ public class PatientAuthService {
         if (now > record.expiresAt()) {
             otpStore.remove(canonicalPhone);
             logger.warn("Expired OTP for phone: {}", canonicalPhone);
+            auditLog.log(OTP_EXPIRED, phone, "OTP expired");
             return null;
         }
 
         if (record.attempts() >= 3) {
             otpStore.remove(canonicalPhone);
             logger.warn("Max OTP verification attempts exceeded for phone: {}", canonicalPhone);
+            auditLog.log(OTP_FAILED, phone, "Max OTP verification attempts exceeded");
             return null;
         }
 
         if (!record.otp().equals(submittedOtp.trim())) {
-            otpStore.put(canonicalPhone, new OtpRecord(record.otp(), record.expiresAt(), record.attempts() + 1));
+            int attemptNumber = record.attempts() + 1;
+            otpStore.put(canonicalPhone, new OtpRecord(record.otp(), record.expiresAt(), attemptNumber));
             logger.warn("Incorrect OTP entered for phone: {}", canonicalPhone);
+            auditLog.log(OTP_FAILED, phone, "Incorrect OTP, attempt " + attemptNumber);
             return null;
         }
 
         // Successfully verified! Consume OTP
         otpStore.remove(canonicalPhone);
+        auditLog.log(OTP_VERIFIED, phone, "OTP verified, session token issued");
 
         // Generate signed HMAC session token
         return generateSessionToken(canonicalPhone);

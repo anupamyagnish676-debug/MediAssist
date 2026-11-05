@@ -4,6 +4,7 @@ import com.med.assistant.model.Appointment;
 import com.med.assistant.model.Doctor;
 import com.med.assistant.model.Hospital;
 import com.med.assistant.model.MedicalDocument;
+import com.med.assistant.model.PatientProfile;
 import com.med.assistant.model.PatientSession;
 import com.med.assistant.repository.AppointmentRepository;
 import com.med.assistant.repository.DoctorRepository;
@@ -67,6 +68,7 @@ public class WhatsAppWebhookController {
     private final PatientSessionRepository patientSessionRepository;
     private final OpdScheduleService opdScheduleService;
     private final RateLimitService rateLimitService;
+    private final PatientProfileService patientProfileService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Fine-grained concurrency lock per doctor & date to eliminate double-booking race conditions
@@ -94,7 +96,8 @@ public class WhatsAppWebhookController {
                                      ExternalHospitalService externalHospitalService,
                                      PatientSessionRepository patientSessionRepository,
                                      OpdScheduleService opdScheduleService,
-                                     RateLimitService rateLimitService) {
+                                     RateLimitService rateLimitService,
+                                     PatientProfileService patientProfileService) {
         this.whatsAppClient = whatsAppClient;
         this.locationService = locationService;
         this.geminiAiService = geminiAiService;
@@ -108,6 +111,7 @@ public class WhatsAppWebhookController {
         this.patientSessionRepository = patientSessionRepository;
         this.opdScheduleService = opdScheduleService;
         this.rateLimitService = rateLimitService;
+        this.patientProfileService = patientProfileService;
     }
 
     /**
@@ -332,11 +336,38 @@ public class WhatsAppWebhookController {
     private void handleTextMessage(String fromPhone, Map<String, Object> textObj) {
         String body = (String) textObj.get("body");
         if (body == null) return;
+
+        // Pre-0. Patient Profile Onboarding flow (step-by-step conversation)
+        if (patientProfileService.isOnboardingInProgress(fromPhone)) {
+            String nextQuestion = patientProfileService.processOnboardingInput(fromPhone, body);
+            if (nextQuestion != null) {
+                whatsAppClient.sendTextMessage(fromPhone, nextQuestion);
+            } else {
+                // Onboarding complete!
+                var profile = patientProfileService.getProfile(fromPhone);
+                String summary = profile.map(p -> p.getProfileSummary()).orElse("");
+                whatsAppClient.sendTextMessage(fromPhone, "✅ *Health Profile Saved!*\n\n" + (summary.isBlank() ? "" : "📋 *Your Profile:* " + summary + "\n\n") + "Your medical details are now stored securely. All your appointment slips will include your profile info for the doctor.\n\nShare your location or type *'book opd'* to book an appointment!");
+            }
+            return;
+        }
+
         String lower = body.toLowerCase().trim();
 
         // 0. Language selection trigger
         if (lower.equals("hindi") || lower.equals("हिंदी") || lower.equals("language") || lower.equals("bhasha") || lower.equals("भाषा") || lower.equals("bengali") || lower.equals("বাংলা")) {
             promptLanguageSelection(fromPhone);
+            return;
+        }
+
+        // 0a-pre. Appointment CANCEL command
+        if (lower.equals("cancel") || lower.startsWith("cancel appointment") || lower.startsWith("cancel my appointment") || lower.startsWith("cancel token")) {
+            handleAppointmentCancellation(fromPhone);
+            return;
+        }
+
+        // 0a-pre2. Appointment RESCHEDULE command
+        if (lower.equals("reschedule") || lower.startsWith("reschedule appointment") || lower.startsWith("reschedule my appointment") || lower.startsWith("reschedule token")) {
+            handleAppointmentReschedule(fromPhone);
             return;
         }
 
@@ -349,6 +380,36 @@ public class WhatsAppWebhookController {
         // 0b. Patient Medical Locker / Wardrobe link
         if (lower.equals("locker") || lower.equals("records") || lower.equals("my records") || lower.equals("my reports") || lower.equals("wardrobe")) {
             sendMedicalLockerLink(fromPhone);
+            return;
+        }
+
+        // Profile management command
+        if (lower.equals("my profile") || lower.equals("profile") || lower.equals("update profile") || lower.equals("health profile")) {
+            var profile = patientProfileService.getProfile(fromPhone);
+            if (profile.isPresent() && profile.get().isProfileComplete()) {
+                PatientProfile p = profile.get();
+                String summary = String.format("""
+                    👤 *Your Health Profile*
+
+                    📛 Name: %s
+                    🎂 Age: %s
+                    👤 Gender: %s
+                    🩸 Blood Group: %s
+                    ⚕️ Known Allergies: %s
+
+                    To update your profile, type *'update profile'* again.
+                    """,
+                    orDefault(p.getFullName(), "Not set"),
+                    (p.getAge() != null ? p.getAge() + " years" : "Not set"),
+                    orDefault(p.getGender(), "Not set"),
+                    orDefault(p.getBloodGroup(), "Not set"),
+                    orDefault(p.getKnownAllergies(), "None")
+                );
+                whatsAppClient.sendTextMessage(fromPhone, summary);
+            } else {
+                String firstQuestion = patientProfileService.startOnboarding(fromPhone);
+                whatsAppClient.sendTextMessage(fromPhone, firstQuestion);
+            }
             return;
         }
 
@@ -578,9 +639,35 @@ public class WhatsAppWebhookController {
                     whatsAppClient.sendTextMessage(fromPhone, "ℹ️ You don't have any active medication alarms scheduled.");
                 }
                 return;
+            } else if ("SETUP_PROFILE".equals(buttonId)) {
+                String firstQuestion = patientProfileService.startOnboarding(fromPhone);
+                whatsAppClient.sendTextMessage(fromPhone, firstQuestion);
+                return;
+            } else if ("SKIP_PROFILE".equals(buttonId)) {
+                whatsAppClient.sendTextMessage(fromPhone, "No problem! You can set up your health profile anytime by typing *'my profile'*.\n\nShare your location or type symptoms to get started!");
+                return;
             }
 
-            if (buttonId.startsWith("DOC_RATE_")) {
+            if (buttonId.startsWith("FOLLOWUP_BETTER_")) {
+                whatsAppClient.sendTextMessage(fromPhone, "😊 *Great to hear you're feeling better!*\n\nThank you for using MediAssist. Stay healthy! 💙\n\nFor your next appointment or medication reminders, we're always here.");
+            } else if (buttonId.startsWith("FOLLOWUP_REBOOK_")) {
+                try {
+                    String apptIdStr = buttonId.replace("FOLLOWUP_REBOOK_", "").trim();
+                    if (!apptIdStr.isEmpty()) {
+                        Long apptId = Long.parseLong(apptIdStr);
+                        appointmentRepository.findById(apptId).ifPresent(pastAppt -> {
+                            if (pastAppt.getDoctor() != null) {
+                                userPendingDoctorBooking.put(fromPhone, pastAppt.getDoctor().getId());
+                            }
+                        });
+                    }
+                } catch (Exception e) {
+                    logger.warn("Could not extract doctorId for follow-up rebooking: {}", e.getMessage());
+                }
+                whatsAppClient.sendTextMessage(fromPhone, "📅 *Let's schedule a follow-up appointment!*\n\nPlease share your location pin or type *'book opd'* to see available doctors near you.");
+            } else if (buttonId.startsWith("FOLLOWUP_DISMISS_")) {
+                whatsAppClient.sendTextMessage(fromPhone, "✅ *All good! Glad you're well.*\n\nDon't hesitate to reach out if you need anything. Take care! 🌟");
+            } else if (buttonId.startsWith("DOC_RATE_")) {
                 handleDoctorRatingSubmission(fromPhone, buttonId);
             } else if (buttonId.startsWith("OFFDUTY_")) {
                 whatsAppClient.sendTextMessage(fromPhone, "ℹ️ The doctor is off-duty on this day. Please select another date from the list above.");
@@ -1763,6 +1850,19 @@ public class WhatsAppWebhookController {
         );
 
         whatsAppClient.sendInteractiveButtons(fromPhone, welcome, buttons);
+
+        // Prompt new users to complete their health profile if not done yet
+        if (!patientProfileService.isProfileComplete(fromPhone) && !patientProfileService.isOnboardingInProgress(fromPhone)) {
+            // Small delay feel — send as a separate follow-up
+            whatsAppClient.sendInteractiveButtons(
+                fromPhone,
+                "📋 *Complete Your Health Profile (1 min)*\n\nThis helps doctors know your age, blood group, and allergies before you arrive — making your visit faster and safer.",
+                List.of(
+                    new WhatsAppClientService.ButtonOption("SETUP_PROFILE", "📝 Set Up Profile"),
+                    new WhatsAppClientService.ButtonOption("SKIP_PROFILE", "⏭️ Skip for Now")
+                )
+            );
+        }
     }
 
     private void showMyAlarms(String fromPhone) {
@@ -1894,5 +1994,96 @@ public class WhatsAppWebhookController {
         );
 
         whatsAppClient.sendTextMessage(fromPhone, msg);
+    }
+
+    /**
+     * Handles appointment cancellation requested via WhatsApp.
+     * Cancels the most recent upcoming appointment for the patient.
+     */
+    private void handleAppointmentCancellation(String fromPhone) {
+        try {
+            List<Appointment> upcoming = appointmentRepository.findByPatientPhoneOrderByAppointmentDateDesc(fromPhone)
+                    .stream()
+                    .filter(a -> !a.getAppointmentDate().isBefore(LocalDate.now()))
+                    .toList();
+
+            if (upcoming.isEmpty()) {
+                whatsAppClient.sendTextMessage(fromPhone, "ℹ️ You have no upcoming appointments to cancel.\n\nType *'book opd'* to book a new appointment!");
+                return;
+            }
+
+            Appointment appt = upcoming.get(0);
+            String docName = (appt.getDoctor() != null) ? appt.getDoctor().getName() : "your doctor";
+            String hospital = (appt.getHospital() != null) ? appt.getHospital().getName() : "the clinic";
+
+            appointmentRepository.delete(appt);
+
+            whatsAppClient.sendTextMessage(fromPhone, String.format("""
+                    🗑️ *Appointment Cancelled Successfully*
+
+                    Your OPD token has been cancelled:
+                    🏥 *Hospital:* %s
+                    👨‍⚕️ *Doctor:* Dr. %s
+                    🎫 *Token:* #%02d
+                    📅 *Date:* %s
+
+                    The slot has been freed for other patients. To book again, type *'book opd'* or share your location.
+                    """,
+                    hospital, docName, appt.getSerialNumber(),
+                    appt.getAppointmentDate().format(java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy"))
+            ));
+
+            logger.info("Appointment {} cancelled by patient via WhatsApp: {}", appt.getId(), fromPhone);
+
+        } catch (Exception e) {
+            logger.error("Error cancelling appointment for {}: {}", fromPhone, e.getMessage(), e);
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ Could not cancel the appointment at this time. Please contact the hospital helpline.");
+        }
+    }
+
+    /**
+     * Handles rescheduling request — cancels the current appointment and prompts re-booking.
+     */
+    private void handleAppointmentReschedule(String fromPhone) {
+        try {
+            List<Appointment> upcoming = appointmentRepository.findByPatientPhoneOrderByAppointmentDateDesc(fromPhone)
+                    .stream()
+                    .filter(a -> !a.getAppointmentDate().isBefore(LocalDate.now()))
+                    .toList();
+
+            if (upcoming.isEmpty()) {
+                whatsAppClient.sendTextMessage(fromPhone, "ℹ️ You have no upcoming appointments to reschedule.\n\nType *'book opd'* to book a fresh appointment!");
+                return;
+            }
+
+            Appointment appt = upcoming.get(0);
+            String docName = (appt.getDoctor() != null) ? appt.getDoctor().getName() : "your doctor";
+            Long doctorId = (appt.getDoctor() != null) ? appt.getDoctor().getId() : null;
+
+            // Delete old appointment
+            appointmentRepository.delete(appt);
+
+            whatsAppClient.sendTextMessage(fromPhone, String.format("""
+                    🔄 *Appointment Rescheduling*
+
+                    Your appointment with *Dr. %s* has been cancelled.\n
+                    Please select a new date for your appointment. You can reply with a date like:\n
+                    👉 *tomorrow*\n👉 *Monday*\n👉 *17 Oct*
+                    """, docName
+            ));
+
+            // Put the same doctor back into pending booking flow for easy re-selection
+            if (doctorId != null) {
+                userPendingDoctorBooking.put(fromPhone, doctorId);
+            }
+
+        } catch (Exception e) {
+            logger.error("Error rescheduling appointment for {}: {}", fromPhone, e.getMessage(), e);
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ Could not reschedule at this time. Please contact the hospital helpline.");
+        }
+    }
+
+    private String orDefault(String value, String defaultValue) {
+        return (value != null && !value.isBlank()) ? value : defaultValue;
     }
 }
