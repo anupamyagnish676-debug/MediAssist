@@ -643,6 +643,18 @@ public class WhatsAppWebhookController {
             } else if ("QUEUE_STATUS".equals(buttonId) || "MY_TOKEN".equals(buttonId)) {
                 handleQueueStatusCheck(fromPhone);
                 return;
+            } else if ("WHATSAPP_REMINDERS".equals(buttonId)) {
+                whatsAppClient.sendTextMessage(fromPhone, """
+                    🔔 *WhatsApp Medication Reminders Active!*
+
+                    MediAssist will ping you directly on WhatsApp at each scheduled dose time with:
+                    • *[✅ Taken]* — logs that you took the medicine
+                    • *[⏰ Snooze 15m]* — reminds you again in 15 minutes
+                    • *[⏰ Snooze 30m]* — reminds you again in 30 minutes
+
+                    Type *'my alarms'* anytime to view or cancel reminders.
+                    """);
+                return;
             } else if ("REAL_ALARM_SYNC".equals(buttonId)) {
                 sendRealAlarmInstructions(fromPhone);
                 return;
@@ -1653,21 +1665,16 @@ public class WhatsAppWebhookController {
             String apkUrl = "https://mediassist-1hdl.onrender.com/MediAssistAlarms.apk";
             String lockerUrl = "https://mediassist-1hdl.onrender.com/my-records.html?phone=" + safePhoneEncoded;
 
-            reply.append("\n🔊 *RING REAL PHONE ALARM (NOT JUST WHATSAPP):*\n")
-                 .append("To trigger physical ringtone alarms & vibration in your mobile Clock/Calendar:\n\n")
-                 .append("📲 *Option 1: MediAssist Android Clock App (.apk)*\n")
-                 .append("Direct 1-tap hardware alarm injector for your phone Clock:\n")
-                 .append("👉 ").append(apkUrl).append("\n\n")
-                 .append("🌐 *Option 2: Open Mobile Alarm Companion:*\n")
-                 .append("👉 ").append(companionUrl).append("\n\n")
-                 .append("📅 *Option 3: 1-Tap Import to Device Calendar (.ics):*\n")
-                 .append("👉 ").append(icsUrl).append("\n\n")
-                 .append("📁 *Option 4: View in Patient Medical Locker:*\n")
-                 .append("👉 ").append(lockerUrl).append("\n\n")
-                 .append("🔔 _You will also receive automated WhatsApp reminder cards with [✅ Taken] and [⏰ Snooze 15m] buttons at dose times!_");
+            reply.append("\n🔔 *WHATSAPP MEDICATION REMINDERS:*\n")
+                 .append("At every scheduled dosage time, MediAssist sends you an interactive WhatsApp alert right here with:\n")
+                 .append("• *[✅ Taken]* — 1-tap adherence logger\n")
+                 .append("• *[⏰ Snooze 15m]* — Re-alerts you in 15 minutes\n")
+                 .append("• *[⏰ Snooze 30m]* — Re-alerts you in 30 minutes\n\n")
+                 .append("📁 *Patient Medical Locker:* ").append(lockerUrl).append("\n")
+                 .append("💬 Tap *'My Alarms'* anytime to check or cancel scheduled reminders.");
 
             List<WhatsAppClientService.ButtonOption> buttons = List.of(
-                    new WhatsAppClientService.ButtonOption("REAL_ALARM_SYNC", "📱 Ring Phone Alarm"),
+                    new WhatsAppClientService.ButtonOption("WHATSAPP_REMINDERS", "🔔 WhatsApp Reminders"),
                     new WhatsAppClientService.ButtonOption("MY_RECORDS", "📁 Medical Locker"),
                     new WhatsAppClientService.ButtonOption("MY_ALARMS", "💊 My Alarms")
             );
