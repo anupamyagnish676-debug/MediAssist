@@ -44,6 +44,12 @@ public class PatientAuthService {
     private static final long OTP_VALIDITY_MILLIS = 5 * 60 * 1000L;       // 5 minutes
     private static final long SESSION_VALIDITY_MILLIS = 2 * 3600 * 1000L;  // 2 hours
 
+    public PatientAuthService() {
+        this.whatsAppClient = null;
+        this.rateLimitService = null;
+        this.auditLog = new AuditLogService();
+    }
+
     public PatientAuthService(WhatsAppClientService whatsAppClient, RateLimitService rateLimitService) {
         this(whatsAppClient, rateLimitService, new AuditLogService());
     }
