@@ -35,6 +35,14 @@ public class PatientProfileApiController {
         PatientProfile profile = profileService.getOrCreateProfile(phone);
 
         if (updates.containsKey("fullName")) profile.setFullName(updates.get("fullName"));
+        if (updates.containsKey("dateOfBirth")) {
+            try {
+                String dobStr = updates.get("dateOfBirth");
+                if (dobStr != null && !dobStr.isBlank()) {
+                    profile.setDateOfBirth(java.time.LocalDate.parse(dobStr.trim()));
+                }
+            } catch (Exception ignored) {}
+        }
         if (updates.containsKey("gender")) profile.setGender(updates.get("gender"));
         if (updates.containsKey("bloodGroup")) profile.setBloodGroup(updates.get("bloodGroup"));
         if (updates.containsKey("city")) profile.setCity(updates.get("city"));
@@ -45,8 +53,8 @@ public class PatientProfileApiController {
         if (updates.containsKey("emergencyContactPhone")) profile.setEmergencyContactPhone(updates.get("emergencyContactPhone"));
 
         profile.setUpdatedAt(java.time.LocalDateTime.now());
-        // Mark complete if at minimum name + gender are set
-        if (profile.getFullName() != null && profile.getGender() != null) {
+        // Mark complete if at minimum name, dob, and gender are set
+        if (profile.getFullName() != null && !profile.getFullName().isBlank()) {
             profile.setProfileComplete(true);
             profile.setOnboardingStep(6);
         }

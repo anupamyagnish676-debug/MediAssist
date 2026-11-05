@@ -303,10 +303,9 @@ public class WhatsAppWebhookController {
     }
 
     private void handleLocationMessage(String fromPhone, Map<String, Object> location) {
-        // Enforce mandatory demographic registration: if profile not complete, prompt onboarding first
+        // Enforce mandatory demographic registration via web portal
         if (!patientProfileService.isProfileComplete(fromPhone)) {
-            String firstQuestion = patientProfileService.startOnboarding(fromPhone);
-            whatsAppClient.sendTextMessage(fromPhone, "📍 Location received!\n\nBefore we book your OPD token, please complete your health profile so the doctor has your details:\n\n" + firstQuestion);
+            sendRegistrationPortalLink(fromPhone);
             return;
         }
 
@@ -358,14 +357,13 @@ public class WhatsAppWebhookController {
             return;
         }
 
-        // Enforce mandatory demographic registration: if profile not complete and not an emergency, start onboarding
+        // Enforce mandatory demographic registration via dedicated web registration portal
         if (!patientProfileService.isProfileComplete(fromPhone)) {
             if (geminiAiService.isEmergency(body)) {
                 whatsAppClient.sendTextMessage(fromPhone, geminiAiService.getEmergencyResponse());
                 return;
             }
-            String firstQuestion = patientProfileService.startOnboarding(fromPhone);
-            whatsAppClient.sendTextMessage(fromPhone, firstQuestion);
+            sendRegistrationPortalLink(fromPhone);
             return;
         }
 
@@ -425,8 +423,7 @@ public class WhatsAppWebhookController {
                 );
                 whatsAppClient.sendTextMessage(fromPhone, summary);
             } else {
-                String firstQuestion = patientProfileService.startOnboarding(fromPhone);
-                whatsAppClient.sendTextMessage(fromPhone, firstQuestion);
+                sendRegistrationPortalLink(fromPhone);
             }
             return;
         }
@@ -658,11 +655,10 @@ public class WhatsAppWebhookController {
                 }
                 return;
             } else if ("SETUP_PROFILE".equals(buttonId)) {
-                String firstQuestion = patientProfileService.startOnboarding(fromPhone);
-                whatsAppClient.sendTextMessage(fromPhone, firstQuestion);
+                sendRegistrationPortalLink(fromPhone);
                 return;
             } else if ("SKIP_PROFILE".equals(buttonId)) {
-                whatsAppClient.sendTextMessage(fromPhone, "No problem! You can set up your health profile anytime by typing *'my profile'*.\n\nShare your location or type symptoms to get started!");
+                sendRegistrationPortalLink(fromPhone);
                 return;
             }
 
@@ -734,6 +730,27 @@ public class WhatsAppWebhookController {
                 whatsAppClient.sendTextMessage(fromPhone, "⏰ Snoozed for 15 minutes. We will remind you again!");
             }
         }
+    }
+
+    private void sendRegistrationPortalLink(String fromPhone) {
+        String safePhoneEncoded = java.net.URLEncoder.encode(fromPhone, java.nio.charset.StandardCharsets.UTF_8);
+        String regUrl = "https://mediassist-1hdl.onrender.com/register.html?phone=" + safePhoneEncoded;
+        String msg = String.format("""
+            📋 *PATIENT REGISTRATION REQUIRED* 🏥
+
+            Welcome to MediAssist! To provide safe healthcare and print your verified details on official OPD case sheets, please complete your one-time registration:
+
+            👉 %s
+
+            ✨ *What you get:*
+            • Official Hospital Medical Record (MRN)
+            • Verified Date of Birth with calendar picker 📅
+            • Instant WhatsApp OTP identity verification 📲
+            • Accurate Age, Gender & Allergy badges on your printed OPD slips 🎫
+
+            Tap the link above to complete registration in 1 minute!
+            """, regUrl);
+        whatsAppClient.sendTextMessage(fromPhone, msg);
     }
 
     private void handleExpressBooking(String fromPhone) {
