@@ -31,7 +31,6 @@ public class HospitalApiController {
     }
 
     @GetMapping
-    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<?> getAllHospitals() {
         try {
             List<Hospital> hospitals = hospitalRepository.findAll();

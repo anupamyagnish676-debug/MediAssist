@@ -46,6 +46,8 @@ public class DatabaseConfig {
                 config.setMaximumPoolSize(10);
                 config.setMinimumIdle(2);
                 config.setConnectionTimeout(30000);
+                config.setReadOnly(false);
+                config.setConnectionInitSql("SET default_transaction_read_only = off;");
                 return new HikariDataSource(config);
             }
 
@@ -83,6 +85,8 @@ public class DatabaseConfig {
                     config.setMaximumPoolSize(10);
                     config.setMinimumIdle(2);
                     config.setConnectionTimeout(30000);
+                    config.setReadOnly(false);
+                    config.setConnectionInitSql("SET default_transaction_read_only = off;");
 
                     logger.info("Successfully configured PostgreSQL datasource for host: {} on database: {}", host, path);
                     return new HikariDataSource(config);
@@ -107,6 +111,7 @@ public class DatabaseConfig {
             String product = conn.getMetaData().getDatabaseProductName().toLowerCase();
             if (product.contains("postgres")) {
                 logger.info("Executing idempotent schema migrations for PostgreSQL...");
+                stmt.execute("SET default_transaction_read_only = off;");
                 // Hospitals table columns
                 stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS registration_number VARCHAR(255);");
                 stmt.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS contact_person_name VARCHAR(255);");

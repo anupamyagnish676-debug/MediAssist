@@ -95,6 +95,7 @@ public class HospitalApplicationController {
     }
 
     @PostMapping
+    @org.springframework.transaction.annotation.Transactional(readOnly = false)
     public ResponseEntity<?> submitApplication(@RequestBody ApplicationRequest req) {
         String hName = req.getEffectiveName();
         String cEmail = req.getEffectiveEmail();
