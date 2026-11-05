@@ -337,7 +337,9 @@
                                     ${app.status === 'PENDING_REVIEW' || app.status === 'PENDING_APPROVAL' ? `
                                         <button class="btn btn-green" onclick="approveApp(${app.id})">Approve</button>
                                         <button class="btn btn-red" onclick="rejectApp(${app.id})">Reject</button>
-                                    ` : ''}
+                                    ` : `
+                                        <button class="btn btn-blue" onclick="resendCredentials(${app.id})" title="Resend credentials email">Resend Email</button>
+                                    `}
                                     <button class="btn btn-red" onclick="deleteApp(${app.id})" style="background-color: #dc2626;">Delete</button>
                                 </div>
                             </td>
@@ -361,6 +363,7 @@
                             <td>
                                 <div class="flex-actions">
                                     <button class="btn btn-blue" onclick="openManagerModal(${h.id})">Add Manager</button>
+                                    <button class="btn" style="background-color: #0284c7; color: white;" onclick="resendHospitalCredentials(${h.id})" title="Resend credentials email">Resend Email</button>
                                     <button class="btn btn-red" onclick="deleteHospital(${h.id})" style="background-color: #dc2626;">Delete</button>
                                 </div>
                             </td>
@@ -398,6 +401,49 @@
         }
 
         // Actions
+        async function resendCredentials(id) {
+            if(!confirm('Resend login credentials email for this hospital application? This will generate a new temporary password and email the administrator.')) return;
+            try {
+                const res = await fetch(`/api/v1/admin/applications/${id}/resend-credentials`, { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if(res.ok) {
+                    showToast(data.message || 'Credentials resent successfully!');
+                    if (data.tempPassword) {
+                        alert(`📧 Credentials Resent Successfully!\n\nPortal Login Details:\n• Email: ${data.managerEmail}\n• Temporary Password: ${data.tempPassword}\n\n(An email with these credentials has been dispatched to ${data.managerEmail})`);
+                    }
+                    loadApplications();
+                    loadHospitals();
+                    loadUsers();
+                } else {
+                    showToast(data.message || 'Failed to resend credentials.', 'error');
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('Network error while resending credentials.', 'error');
+            }
+        }
+
+        async function resendHospitalCredentials(id) {
+            if(!confirm('Resend login credentials email for this hospital? This will generate a new temporary password and email the administrator.')) return;
+            try {
+                const res = await fetch(`/api/v1/admin/hospitals/${id}/resend-credentials`, { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if(res.ok) {
+                    showToast(data.message || 'Credentials resent successfully!');
+                    if (data.tempPassword) {
+                        alert(`📧 Credentials Resent Successfully!\n\nPortal Login Details:\n• Email: ${data.managerEmail}\n• Temporary Password: ${data.tempPassword}\n\n(An email with these credentials has been dispatched to ${data.managerEmail})`);
+                    }
+                    loadHospitals();
+                    loadUsers();
+                } else {
+                    showToast(data.message || 'Failed to resend credentials.', 'error');
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('Network error while resending credentials.', 'error');
+            }
+        }
+
         async function approveApp(id) {
             if(!confirm('Approve this application?')) return;
             try {

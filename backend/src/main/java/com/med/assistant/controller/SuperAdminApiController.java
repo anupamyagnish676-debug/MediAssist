@@ -110,27 +110,46 @@ public class SuperAdminApiController {
      */
     @PostMapping("/applications/{id}/approve")
     public ResponseEntity<?> approveApplication(@PathVariable Long id) {
+        return processHospitalApprovalOrResend(id, false);
+    }
+
+    /**
+     * Resend credentials email for an application.
+     */
+    @PostMapping("/applications/{id}/resend-credentials")
+    public ResponseEntity<?> resendApplicationCredentials(@PathVariable Long id) {
+        return processHospitalApprovalOrResend(id, true);
+    }
+
+    /**
+     * Resend credentials email for an existing hospital.
+     */
+    @PostMapping("/hospitals/{id}/resend-credentials")
+    public ResponseEntity<?> resendHospitalCredentials(@PathVariable Long id) {
+        return processHospitalApprovalOrResend(id, true);
+    }
+
+    private ResponseEntity<?> processHospitalApprovalOrResend(Long id, boolean isExplicitResend) {
         Optional<Hospital> opt = hospitalRepository.findById(id);
         if (opt.isEmpty()) return ResponseEntity.notFound().build();
 
         Hospital hospital = opt.get();
-        if (hospital.getStatus() != Hospital.Status.PENDING_REVIEW && hospital.getStatus() != Hospital.Status.PENDING_APPROVAL) {
-            return ResponseEntity.badRequest().body(Map.of("message", "This application has already been reviewed."));
-        }
 
         // Generate temporary password
         String tempPassword = generateTempPassword();
 
-        // Create hospital manager user account
+        // Check contact email
         String email = hospital.getContactPersonEmail();
         if (email == null || email.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of("message", "No contact email found on this application."));
+            return ResponseEntity.badRequest().body(Map.of("message", "No contact email found on this hospital application."));
         }
 
-        // Update hospital status
+        // Update hospital status to ACTIVE
         hospital.setStatus(Hospital.Status.ACTIVE);
         hospital.setActive(true);
-        hospital.setReviewedAt(LocalDateTime.now());
+        if (hospital.getReviewedAt() == null) {
+            hospital.setReviewedAt(LocalDateTime.now());
+        }
         hospitalRepository.save(hospital);
 
         // Create or update hospital manager user account
@@ -141,6 +160,7 @@ public class SuperAdminApiController {
             manager.setHospital(hospital);
             manager.setPassword(passwordEncoder.encode(tempPassword));
             manager.setMustChangePassword(true);
+            manager.setActive(true);
             if (hospital.getContactPersonName() != null && !hospital.getContactPersonName().isBlank()) {
                 manager.setFullName(hospital.getContactPersonName());
             }
@@ -148,7 +168,7 @@ public class SuperAdminApiController {
                 manager.setPhoneNumber(hospital.getContactPersonPhone());
             }
             userRepository.save(manager);
-            logger.info("Updated existing manager '{}' for hospital '{}'", email, hospital.getName());
+            logger.info("Updated manager '{}' for hospital '{}'", email, hospital.getName());
         } else {
             manager = new User(
                 email,
@@ -169,14 +189,15 @@ public class SuperAdminApiController {
             emailSent = emailService.sendCredentials(email, hospital.getName(),
                     manager.getFullName(), tempPassword);
         } catch (Exception e) {
-            logger.error("Failed to send email but approval succeeded: {}", e.getMessage());
+            logger.error("Failed to send credentials email: {}", e.getMessage());
         }
 
-        logger.info("Application approved: '{}' (ID: {}). Manager: {}. Email delivered: {}", hospital.getName(), id, email, emailSent);
+        logger.info("Hospital approval/credentials processed: '{}' (ID: {}). Manager: {}. Email delivered: {}",
+                hospital.getName(), id, email, emailSent);
 
         String msg = emailSent
-                ? "Hospital approved! Credentials sent to " + email
-                : "Hospital approved! Email delivery queued (check spam/inbox for " + email + ")";
+                ? "Credentials email sent successfully to " + email
+                : "Hospital active! Credentials generated (delivery queued for " + email + ")";
 
         return ResponseEntity.ok(Map.of(
             "success", true,
@@ -184,7 +205,7 @@ public class SuperAdminApiController {
             "emailDelivered", emailSent,
             "hospitalId", hospital.getId(),
             "managerEmail", email,
-            "tempPassword", tempPassword // Return so admin can view/copy directly in admin portal
+            "tempPassword", tempPassword
         ));
     }
 
