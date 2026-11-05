@@ -87,8 +87,24 @@ public class AppointmentSlipPdfService {
      * Generate PDF bytes for an appointment (on-demand, for download endpoint).
      */
     public byte[] generateAndGetBytes(Appointment appointment) {
-        generatePdfSlip(appointment);
-        return pdfCache.get(appointment.getId());
+        try {
+            return buildFreshPdf(appointment);
+        } catch (Exception e) {
+            logger.error("Failed to generate PDF on-demand: {}", e.getMessage(), e);
+            generatePdfSlip(appointment);
+            return pdfCache.get(appointment.getId());
+        }
+    }
+
+    /**
+     * Generate fresh PDF bytes for an appointment (bypassing any stale cache).
+     */
+    public byte[] buildFreshPdf(Appointment appointment) throws Exception {
+        byte[] pdfBytes = buildPdf(appointment);
+        if (appointment != null && appointment.getId() != null) {
+            pdfCache.put(appointment.getId(), pdfBytes);
+        }
+        return pdfBytes;
     }
 
     @SuppressWarnings("deprecation")

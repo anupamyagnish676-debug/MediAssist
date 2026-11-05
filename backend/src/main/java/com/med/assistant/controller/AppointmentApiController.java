@@ -1,6 +1,9 @@
 package com.med.assistant.controller;
 
 import com.med.assistant.model.Appointment;
+import com.med.assistant.model.Doctor;
+import com.med.assistant.model.Hospital;
+import com.med.assistant.model.User;
 import com.med.assistant.repository.AppointmentRepository;
 import com.med.assistant.service.PatientAuthService;
 import com.med.assistant.service.RateLimitService;
@@ -389,14 +392,19 @@ public class AppointmentApiController {
         if (opt.isEmpty()) {
             return ResponseEntity.notFound().build();
         }
+        Appointment appt = opt.get();
+        // Ensure hospital is reloaded fresh with latest logoUrl/brandColor/tagline
+        if (appt.getHospital() != null && appt.getHospital().getId() != null) {
+            hospitalRepository.findById(appt.getHospital().getId()).ifPresent(appt::setHospital);
+        }
         try {
-            byte[] pdfBytes = pdfService.generateAndGetBytes(opt.get());
+            byte[] pdfBytes = pdfService.buildFreshPdf(appt);
             if (pdfBytes == null || pdfBytes.length == 0) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
             }
             return ResponseEntity.ok()
                     .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/pdf")
-                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Appointment_Token_" + opt.get().getSerialNumber() + ".pdf\"")
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Appointment_Token_" + appt.getSerialNumber() + ".pdf\"")
                     .body(pdfBytes);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -407,22 +415,50 @@ public class AppointmentApiController {
      * Preview branded OP Case Sheet PDF with current hospital customizations.
      */
     @GetMapping("/sample-pdf")
-    public ResponseEntity<byte[]> previewSamplePdf() {
+    public ResponseEntity<byte[]> previewSamplePdf(
+            @RequestParam(required = false) Long hospitalId,
+            java.security.Principal principal) {
         try {
-            List<Appointment> all = appointmentRepository.findAll();
-            Appointment appt;
-            if (!all.isEmpty()) {
-                appt = all.get(all.size() - 1);
-            } else {
-                appt = new Appointment();
-                appt.setPatientName("SAMPLE PATIENT (PREVIEW)");
-                appt.setPatientPhone("9876543210");
-                appt.setSerialNumber(1);
-                appt.setQrCodeToken("SAMPLE-TOKEN-QR");
-                appt.setAppointmentDate(java.time.LocalDate.now());
-                appt.setTimeSlot("10:00 AM - 10:15 AM");
+            Hospital targetHospital = null;
+            if (hospitalId != null) {
+                targetHospital = hospitalRepository.findById(hospitalId).orElse(null);
             }
-            byte[] pdfBytes = pdfService.generateAndGetBytes(appt);
+            if (targetHospital == null && principal != null) {
+                Optional<User> uOpt = userRepository.findByEmailIgnoreCase(principal.getName());
+                if (uOpt.isPresent() && uOpt.get().getHospital() != null) {
+                    targetHospital = hospitalRepository.findById(uOpt.get().getHospital().getId()).orElse(null);
+                }
+            }
+            if (targetHospital == null) {
+                // If still null, check if any hospital has custom logo
+                targetHospital = hospitalRepository.findAll().stream()
+                        .filter(h -> h.getLogoUrl() != null && h.getLogoUrl().startsWith("data:image"))
+                        .findFirst()
+                        .orElse(null);
+            }
+            if (targetHospital == null) {
+                List<Hospital> allHosp = hospitalRepository.findAll();
+                if (!allHosp.isEmpty()) targetHospital = allHosp.get(0);
+            }
+
+            Appointment appt = new Appointment();
+            appt.setId(9999L);
+            appt.setHospital(targetHospital);
+            appt.setPatientName("SAMPLE PATIENT (PREVIEW)");
+            appt.setPatientPhone("+91 98765 43210");
+            appt.setSerialNumber(1);
+            appt.setQrCodeToken("SAMPLE-TOKEN-QR");
+            appt.setAppointmentDate(java.time.LocalDate.now());
+            appt.setTimeSlot("10:00 AM - 10:15 AM");
+
+            if (targetHospital != null) {
+                List<Doctor> docs = doctorRepository.findByHospitalId(targetHospital.getId());
+                if (!docs.isEmpty()) {
+                    appt.setDoctor(docs.get(0));
+                }
+            }
+
+            byte[] pdfBytes = pdfService.buildFreshPdf(appt);
             return ResponseEntity.ok()
                     .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/pdf")
                     .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Branded_OP_Case_Sheet_Preview.pdf\"")
