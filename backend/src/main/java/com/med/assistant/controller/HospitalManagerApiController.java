@@ -84,7 +84,19 @@ public class HospitalManagerApiController {
             int consultationDurationMinutes,
             String availableTime
     ) {}
-    public record UpdateHospitalSettingsRequest(String name, String address, String phone, String brandColor, String logoUrl, String specialties) {}
+    public record UpdateHospitalSettingsRequest(
+            String name,
+            String address,
+            String phone,
+            String brandColor,
+            String logoUrl,
+            String specialties,
+            String tagline,
+            String emergencyPhone,
+            String customFooterNotes,
+            String aboutText,
+            String bannerUrl
+    ) {}
 
     /**
      * Get details of the hospital assigned to this manager.
@@ -95,7 +107,7 @@ public class HospitalManagerApiController {
     }
 
     /**
-     * Update hospital settings (name, address, phone, brandColor, logoUrl, specialties).
+     * Update hospital settings & branding (name, address, phone, brandColor, logoUrl, specialties, tagline, emergencyPhone, customFooterNotes, aboutText, bannerUrl).
      */
     @PutMapping("/settings")
     public ResponseEntity<?> updateSettings(@RequestBody UpdateHospitalSettingsRequest req) {
@@ -105,6 +117,11 @@ public class HospitalManagerApiController {
         if (req.phone() != null) h.setPhone(req.phone().trim());
         if (req.brandColor() != null && !req.brandColor().isBlank()) h.setBrandColor(req.brandColor().trim());
         if (req.specialties() != null) h.setSpecialties(req.specialties().trim());
+        if (req.tagline() != null) h.setTagline(req.tagline().trim());
+        if (req.emergencyPhone() != null) h.setEmergencyPhone(req.emergencyPhone().trim());
+        if (req.customFooterNotes() != null) h.setCustomFooterNotes(req.customFooterNotes().trim());
+        if (req.aboutText() != null) h.setAboutText(req.aboutText().trim());
+        if (req.bannerUrl() != null) h.setBannerUrl(req.bannerUrl().trim());
         if (req.logoUrl() != null && !req.logoUrl().isBlank()) {
             h.setLogoUrl(compressLogoIfBase64(req.logoUrl().trim()));
         }

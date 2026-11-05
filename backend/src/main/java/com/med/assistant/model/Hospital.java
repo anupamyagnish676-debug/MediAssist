@@ -36,6 +36,16 @@ public class Hospital {
     private String city;
     private String state;
 
+    // Hospital Branding & Customization Fields (for Case Sheet & Public Webpage)
+    private String tagline;
+    private String emergencyPhone;
+    @Column(columnDefinition = "TEXT")
+    private String customFooterNotes;
+    @Column(columnDefinition = "TEXT")
+    private String aboutText;
+    @Column(columnDefinition = "TEXT")
+    private String bannerUrl;
+
     private LocalDateTime appliedAt;
     private LocalDateTime reviewedAt;
     private String rejectionReason;
@@ -136,4 +146,19 @@ public class Hospital {
 
     public String getRejectionReason() { return rejectionReason; }
     public void setRejectionReason(String rejectionReason) { this.rejectionReason = rejectionReason; }
+
+    public String getTagline() { return tagline; }
+    public void setTagline(String tagline) { this.tagline = tagline; }
+
+    public String getEmergencyPhone() { return emergencyPhone; }
+    public void setEmergencyPhone(String emergencyPhone) { this.emergencyPhone = emergencyPhone; }
+
+    public String getCustomFooterNotes() { return customFooterNotes; }
+    public void setCustomFooterNotes(String customFooterNotes) { this.customFooterNotes = customFooterNotes; }
+
+    public String getAboutText() { return aboutText; }
+    public void setAboutText(String aboutText) { this.aboutText = aboutText; }
+
+    public String getBannerUrl() { return bannerUrl; }
+    public void setBannerUrl(String bannerUrl) { this.bannerUrl = bannerUrl; }
 }

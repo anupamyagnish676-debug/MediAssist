@@ -379,35 +379,61 @@
                             <input type="text" id="set-name" required>
                         </div>
                         <div class="form-group">
+                            <label>Tagline / Accreditations (Printed on OP Slip & Webpage)</label>
+                            <input type="text" id="set-tagline" placeholder="e.g. A Multi-Speciality Tertiary Care Hospital (NABH & NABL Accredited)">
+                        </div>
+                        <div class="form-group">
                             <label>Address</label>
                             <input type="text" id="set-address">
                         </div>
-                        <div class="form-group">
-                            <label>Contact Phone</label>
-                            <input type="text" id="set-phone">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div class="form-group">
+                                <label>Help Desk Phone</label>
+                                <input type="text" id="set-phone">
+                            </div>
+                            <div class="form-group">
+                                <label>24x7 Emergency Helpline</label>
+                                <input type="text" id="set-emergency-phone" placeholder="e.g. 0674-2725400 / 108">
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label>Brand Color (Hex)</label>
-                            <input type="text" id="set-color" placeholder="#0066FF">
+                            <label>Brand Theme Color</label>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <input type="color" id="set-color-picker" value="#0284c7" style="width: 46px; height: 38px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer;">
+                                <input type="text" id="set-color" placeholder="#0284c7" style="flex: 1;">
+                            </div>
+                            <small style="color: #64748b; font-size: 0.8rem; margin-top: 4px; display: block;">Used for OP Case Sheet banner bands, buttons, and your public webpage theme.</small>
                         </div>
                         <div class="form-group">
                             <label>Registered Departments / Specialties (comma-separated)</label>
-                            <input type="text" id="set-specialties" placeholder="e.g. General Medicine, Cardiology, Orthopedics">
-                            <small style="color: #64748b; font-size: 0.8rem; margin-top: 4px; display: block;">These departments appear in the Add Doctor dropdown.</small>
+                            <input type="text" id="set-specialties" placeholder="e.g. General Medicine, Cardiology, Orthopedics, Pediatrics">
+                            <small style="color: #64748b; font-size: 0.8rem; margin-top: 4px; display: block;">These departments appear on your public webpage and in the Add Doctor dropdown.</small>
                         </div>
                         <div class="form-group">
-                            <label>Hospital Medical Logo (Printed on Top-Right of OP Case Sheet)</label>
+                            <label>About Hospital (Displayed on your Public Webpage)</label>
+                            <textarea id="set-about-text" rows="3" placeholder="Provide an overview of the hospital facilities, ICU beds, emergency response, and diagnostic labs..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Case Sheet Footer Instructions (Printed on bottom of OP Case Sheet)</label>
+                            <input type="text" id="set-footer-notes" placeholder="e.g. Valid for 7 days. Please bring this slip on every follow-up visit.">
+                        </div>
+                        <div class="form-group">
+                            <label>Hospital Medical Logo (Printed on Top-Right of OP Case Sheet & Webpage)</label>
                             <div style="display: flex; align-items: center; gap: 15px; margin-top: 8px;">
                                 <div id="logo-preview-box" style="width: 70px; height: 70px; border-radius: 8px; border: 2px dashed #cbd5e1; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #f8fafc;">
                                     <img id="set-logo-preview" src="/images/default_hospital_crest.png" alt="Hospital Logo" style="max-width: 100%; max-height: 100%; object-fit: contain;">
                                 </div>
                                 <div style="flex: 1;">
                                     <input type="file" id="set-logo-file" accept="image/*" style="font-size: 0.9rem;">
-                                    <p style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">Upload hospital/medical crest (PNG or JPG). Appears on top-right of official OP Case Sheet.</p>
+                                    <p style="font-size: 0.8rem; color: #64748b; margin-top: 4px;">Upload hospital/medical crest (PNG or JPG). Appears on top-right of official OP Case Sheet and hospital webpage header.</p>
                                 </div>
                             </div>
                         </div>
-                        <button type="submit" class="btn btn-blue">Save Changes</button>
+                        <div style="display: flex; gap: 10px; align-items: center; margin-top: 1.5rem; flex-wrap: wrap;">
+                            <button type="submit" class="btn btn-blue" style="padding: 0.75rem 1.5rem;">💾 Save Branding & Customizations</button>
+                            <a id="btn-preview-webpage" href="#" target="_blank" class="btn" style="background: #059669; color: white; text-decoration: none; padding: 0.75rem 1.25rem; border-radius: 0.375rem; display: inline-flex; align-items: center; gap: 6px;">🌐 View Public Webpage</a>
+                            <button type="button" id="btn-preview-casesheet" class="btn" style="background: #475569; color: white; padding: 0.75rem 1.25rem; border-radius: 0.375rem;">📄 Preview Case Sheet</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -856,17 +882,44 @@
         function fillSettings() {
             if(myHospital) {
                 document.getElementById('set-name').value = myHospital.name || '';
+                document.getElementById('set-tagline').value = myHospital.tagline || '';
                 document.getElementById('set-address').value = myHospital.address || '';
                 document.getElementById('set-phone').value = myHospital.phone || '';
-                document.getElementById('set-color').value = myHospital.brandColor || '';
+                document.getElementById('set-emergency-phone').value = myHospital.emergencyPhone || '';
+                const bCol = myHospital.brandColor || '#0284c7';
+                document.getElementById('set-color').value = bCol;
+                document.getElementById('set-color-picker').value = bCol.startsWith('#') && bCol.length === 7 ? bCol : '#0284c7';
                 document.getElementById('set-specialties').value = myHospital.specialties || '';
+                document.getElementById('set-about-text').value = myHospital.aboutText || '';
+                document.getElementById('set-footer-notes').value = myHospital.customFooterNotes || '';
                 if (myHospital.logoUrl) {
                     document.getElementById('set-logo-preview').src = myHospital.logoUrl;
                 } else {
                     document.getElementById('set-logo-preview').src = '/images/default_hospital_crest.png';
                 }
+
+                // Wire up preview links
+                const previewWeb = document.getElementById('btn-preview-webpage');
+                if (previewWeb && myHospital.id) {
+                    previewWeb.href = '/hospital.html?id=' + myHospital.id;
+                }
             }
         }
+
+        // Sync color picker with text input
+        document.getElementById('set-color-picker').addEventListener('input', (e) => {
+            document.getElementById('set-color').value = e.target.value;
+        });
+        document.getElementById('set-color').addEventListener('input', (e) => {
+            if (e.target.value.startsWith('#') && e.target.value.length === 7) {
+                document.getElementById('set-color-picker').value = e.target.value;
+            }
+        });
+
+        // Preview Case Sheet
+        document.getElementById('btn-preview-casesheet').addEventListener('click', () => {
+            window.open('/api/v1/appointments/sample-pdf', '_blank');
+        });
 
         document.getElementById('set-logo-file').addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -899,10 +952,14 @@
             e.preventDefault();
             const payload = {
                 name: document.getElementById('set-name').value,
+                tagline: document.getElementById('set-tagline').value,
                 address: document.getElementById('set-address').value,
                 phone: document.getElementById('set-phone').value,
+                emergencyPhone: document.getElementById('set-emergency-phone').value,
                 brandColor: document.getElementById('set-color').value,
                 specialties: document.getElementById('set-specialties').value,
+                aboutText: document.getElementById('set-about-text').value,
+                customFooterNotes: document.getElementById('set-footer-notes').value,
                 logoUrl: uploadedLogoBase64 || (myHospital ? myHospital.logoUrl : null)
             };
             try {

@@ -47,6 +47,13 @@ public class HospitalApiController {
                 map.put("phone", h.getPhone());
                 map.put("brandColor", h.getBrandColor() != null ? h.getBrandColor() : "#0284c7");
                 map.put("logoUrl", h.getLogoUrl());
+                map.put("tagline", h.getTagline());
+                map.put("emergencyPhone", h.getEmergencyPhone());
+                map.put("specialties", h.getSpecialties());
+                map.put("numberOfBeds", h.getNumberOfBeds());
+                map.put("aboutText", h.getAboutText());
+                map.put("bannerUrl", h.getBannerUrl());
+                map.put("registrationNumber", h.getRegistrationNumber());
                 map.put("active", h.isActive());
                 map.put("status", h.getStatus() != null ? h.getStatus().name() : "ACTIVE");
 
@@ -140,6 +147,11 @@ public class HospitalApiController {
                 "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS applied_at TIMESTAMP",
                 "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP",
                 "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS rejection_reason TEXT",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS tagline VARCHAR(255)",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS emergency_phone VARCHAR(100)",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS custom_footer_notes TEXT",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS about_text TEXT",
+                "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS banner_url TEXT",
                 "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS status VARCHAR(50) DEFAULT 'ACTIVE'",
                 "ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT TRUE"
         };
@@ -162,6 +174,53 @@ public class HospitalApiController {
             res.put("error", e.getMessage());
         }
         return ResponseEntity.ok(res);
+    }
+
+    @GetMapping("/{hospitalId}")
+    public ResponseEntity<?> getHospitalById(@PathVariable Long hospitalId) {
+        return hospitalRepository.findById(hospitalId)
+                .map(h -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", h.getId());
+                    map.put("name", h.getName());
+                    map.put("address", h.getAddress());
+                    map.put("latitude", h.getLatitude());
+                    map.put("longitude", h.getLongitude());
+                    map.put("phone", h.getPhone());
+                    map.put("brandColor", h.getBrandColor() != null ? h.getBrandColor() : "#0284c7");
+                    map.put("logoUrl", h.getLogoUrl());
+                    map.put("tagline", h.getTagline());
+                    map.put("emergencyPhone", h.getEmergencyPhone());
+                    map.put("specialties", h.getSpecialties());
+                    map.put("numberOfBeds", h.getNumberOfBeds());
+                    map.put("aboutText", h.getAboutText());
+                    map.put("bannerUrl", h.getBannerUrl());
+                    map.put("registrationNumber", h.getRegistrationNumber());
+                    map.put("active", h.isActive());
+
+                    List<Doctor> docList = doctorRepository.findByHospitalId(h.getId());
+                    List<Map<String, Object>> docs = new java.util.ArrayList<>();
+                    for (Doctor d : docList) {
+                        Map<String, Object> docMap = new HashMap<>();
+                        docMap.put("id", d.getId());
+                        docMap.put("name", d.getName());
+                        docMap.put("department", d.getDepartment());
+                        docMap.put("qualification", d.getQualification() != null ? d.getQualification() : "MBBS, MD");
+                        docMap.put("firstHalfTime", d.getFirstHalfTime() != null ? d.getFirstHalfTime() : "09:00 AM - 01:00 PM");
+                        docMap.put("secondHalfTime", d.getSecondHalfTime() != null ? d.getSecondHalfTime() : "05:00 PM - 09:00 PM");
+                        docMap.put("availableDays", d.getAvailableDays() != null ? d.getAvailableDays() : "MON,TUE,WED,THU,FRI,SAT");
+                        docMap.put("dailyTokenLimit", d.getDailyTokenLimit());
+                        docMap.put("currentTokenCount", d.getCurrentTokenCount());
+                        docMap.put("availableToday", d.isAvailableToday());
+                        docMap.put("roomNumber", d.getRoomNumber() != null ? d.getRoomNumber() : "101");
+                        docMap.put("consultationFee", d.getConsultationFee());
+                        docMap.put("rating", d.getRating());
+                        docs.add(docMap);
+                    }
+                    map.put("doctors", docs);
+                    return ResponseEntity.ok((Object) map);
+                })
+                .orElseGet(() -> ResponseEntity.status(404).body(Map.of("error", "Hospital not found")));
     }
 
     @GetMapping("/{hospitalId}/doctors")

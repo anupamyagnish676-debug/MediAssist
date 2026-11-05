@@ -403,6 +403,35 @@ public class AppointmentApiController {
         }
     }
 
+    /**
+     * Preview branded OP Case Sheet PDF with current hospital customizations.
+     */
+    @GetMapping("/sample-pdf")
+    public ResponseEntity<byte[]> previewSamplePdf() {
+        try {
+            List<Appointment> all = appointmentRepository.findAll();
+            Appointment appt;
+            if (!all.isEmpty()) {
+                appt = all.get(all.size() - 1);
+            } else {
+                appt = new Appointment();
+                appt.setPatientName("SAMPLE PATIENT (PREVIEW)");
+                appt.setPatientPhone("9876543210");
+                appt.setSerialNumber(1);
+                appt.setQrCodeToken("SAMPLE-TOKEN-QR");
+                appt.setAppointmentDate(java.time.LocalDate.now());
+                appt.setTimeSlot("10:00 AM - 10:15 AM");
+            }
+            byte[] pdfBytes = pdfService.generateAndGetBytes(appt);
+            return ResponseEntity.ok()
+                    .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/pdf")
+                    .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Branded_OP_Case_Sheet_Preview.pdf\"")
+                    .body(pdfBytes);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     public record WalkInRequest(
             Long hospitalId,
             Long doctorId,

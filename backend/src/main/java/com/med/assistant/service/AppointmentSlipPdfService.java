@@ -100,6 +100,10 @@ public class AppointmentSlipPdfService {
         String hospitalEmail = "info@kims.ac.in";
         String hospitalWeb = "https://kims.kiit.ac.in";
         String logoUrl = null;
+        String hospitalTagline = null;
+        String hospitalEmergency = null;
+        String hospitalFooterNotes = null;
+        String hospitalBrandColorHex = null;
 
         if (appointment.getHospital() != null) {
             if (appointment.getHospital().getName() != null && !appointment.getHospital().getName().isBlank()) {
@@ -112,6 +116,10 @@ public class AppointmentSlipPdfService {
                 hospitalPhone = appointment.getHospital().getPhone();
             }
             logoUrl = appointment.getHospital().getLogoUrl();
+            hospitalTagline = appointment.getHospital().getTagline();
+            hospitalEmergency = appointment.getHospital().getEmergencyPhone();
+            hospitalFooterNotes = appointment.getHospital().getCustomFooterNotes();
+            hospitalBrandColorHex = appointment.getHospital().getBrandColor();
         }
 
         // --- Extract Doctor Details ---
@@ -155,8 +163,15 @@ public class AppointmentSlipPdfService {
         String mrn = "KIMS" + String.format("%08d", (appointment.getId() != null ? appointment.getId() * 10140L : 102310010140L) % 100000000L);
 
         // --- Colors ---
-        int[] forestGreen = {20, 83, 45};        // #14532d (KIMS Banner Green)
-        int[] darkGreen = {22, 101, 52};          // #166534
+        int[] forestGreen = {20, 83, 45};        // #14532d (Default Banner Green)
+        int[] brandAccent = forestGreen;
+        if (hospitalBrandColorHex != null && hospitalBrandColorHex.startsWith("#") && hospitalBrandColorHex.length() == 7) {
+            try {
+                java.awt.Color c = java.awt.Color.decode(hospitalBrandColorHex);
+                brandAccent = new int[]{c.getRed(), c.getGreen(), c.getBlue()};
+            } catch (Exception ignored) {}
+        }
+        int[] darkGreen = brandAccent;
         int[] darkText = {15, 23, 42};            // #0f172a
         int[] mutedText = {71, 85, 105};          // #475569
         int[] lightGray = {241, 245, 249};        // #f1f5f9
@@ -230,7 +245,9 @@ public class AppointmentSlipPdfService {
                 cs.setNonStrokingColor(mutedText[0], mutedText[1], mutedText[2]);
                 cs.beginText();
                 cs.setFont(fontRegular, 7.5f);
-                String badgeText = "NABH & NABL ACCREDITED SUPER SPECIALITY HOSPITAL & MEDICAL COLLEGE";
+                String badgeText = (hospitalTagline != null && !hospitalTagline.isBlank())
+                        ? truncate(hospitalTagline.toUpperCase(), 75)
+                        : "NABH & NABL ACCREDITED SUPER SPECIALITY HOSPITAL & MEDICAL COLLEGE";
                 float badgeW = fontRegular.getStringWidth(badgeText) / 1000 * 7.5f;
                 cs.newLineAtOffset(centerLeft + (centerWidth - badgeW) / 2, headerTop - 48);
                 cs.showText(badgeText);
@@ -541,8 +558,12 @@ public class AppointmentSlipPdfService {
                 cs.showText("IMPORTANT INSTRUCTIONS FOR PATIENTS:");
                 cs.endText();
 
+                String customNote1 = (hospitalFooterNotes != null && !hospitalFooterNotes.isBlank())
+                        ? "- " + truncate(hospitalFooterNotes.trim(), 90)
+                        : "- Please report 15 mins before your tentative window for QR check-in";
+
                 String[] patientInstructions = {
-                    "- Please report 15 mins before your tentative window for QR check-in",
+                    customNote1,
                     "- This slip is required during consultation and diagnostic pharmacy bills",
                     "- Valid only for the date and consulting department mentioned above",
                     "- Track live queue anytime by messaging 'queue status' on WhatsApp"
@@ -564,14 +585,17 @@ public class AppointmentSlipPdfService {
                 float footerH = 18;
                 float footerY = 46;
 
-                cs.setNonStrokingColor(forestGreen[0], forestGreen[1], forestGreen[2]);
+                cs.setNonStrokingColor(brandAccent[0], brandAccent[1], brandAccent[2]);
                 cs.addRect(margin, footerY, contentWidth, footerH);
                 cs.fill();
 
                 cs.setNonStrokingColor(white[0], white[1], white[2]);
                 cs.beginText();
                 cs.setFont(fontBold, 7);
-                String contactLine = "Hello KIMS: " + hospitalPhone + "   |   " + hospitalEmail + "   |   " + hospitalWeb;
+                String emergPart = (hospitalEmergency != null && !hospitalEmergency.isBlank())
+                        ? "24x7 Emergency: " + hospitalEmergency + "   |   "
+                        : "";
+                String contactLine = emergPart + "Help Desk: " + hospitalPhone + "   |   " + hospitalEmail;
                 float cLineW = fontBold.getStringWidth(contactLine) / 1000 * 7;
                 cs.newLineAtOffset(margin + (contentWidth - cLineW) / 2, footerY + 5);
                 cs.showText(contactLine);

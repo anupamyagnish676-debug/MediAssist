@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="page-title">Hospital Profile | MediAssist</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #0284c7;
+            --primary-dark: #0369a1;
+            --primary-light: #e0f2fe;
+            --text-dark: #0f172a;
+            --text-muted: #64748b;
+            --bg-light: #f8fafc;
+            --card-bg: #ffffff;
+            --border-color: #e2e8f0;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+            padding-bottom: 60px;
+        }
+
+        /* Top Header Navigation */
+        .top-navbar {
+            background: white;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0.85rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .network-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #059669;
+            background: #ecfdf5;
+            padding: 4px 12px;
+            border-radius: 9999px;
+            border: 1px solid #a7f3d0;
+        }
+
+        /* Hero Banner */
+        .hero-banner {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 3.5rem 1.5rem 4rem 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-banner::after {
+            content: '';
+            position: absolute;
+            top: 0; right: 0; bottom: 0; left: 0;
+            background: radial-gradient(circle at 85% 20%, rgba(255, 255, 255, 0.15) 0%, transparent 60%);
+            pointer-events: none;
+        }
+
+        .hero-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+            position: relative;
+            z-index: 10;
+        }
+
+        .hospital-logo-badge {
+            width: 110px;
+            height: 110px;
+            background: white;
+            border-radius: 18px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--shadow-lg);
+            flex-shrink: 0;
+            border: 3px solid rgba(255, 255, 255, 0.8);
+        }
+
+        .hospital-logo-badge img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .hero-info {
+            flex: 1;
+        }
+
+        .hero-info h1 {
+            font-size: 2.25rem;
+            font-weight: 800;
+            margin-bottom: 0.35rem;
+            letter-spacing: -0.025em;
+        }
+
+        .hero-tagline {
+            font-size: 1.05rem;
+            color: rgba(255, 255, 255, 0.92);
+            font-weight: 500;
+            margin-bottom: 0.85rem;
+        }
+
+        .hero-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.25rem;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .hero-meta-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Main Container */
+        .main-container {
+            max-width: 1200px;
+            margin: -2rem auto 0 auto;
+            padding: 0 1.5rem;
+            position: relative;
+            z-index: 20;
+        }
+
+        /* Highlights Row */
+        .highlights-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .highlight-card {
+            background: white;
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            box-shadow: var(--shadow-md);
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .highlight-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: var(--primary-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+
+        .highlight-title {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .highlight-val {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        /* Two Column Layout */
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            .layout-grid {
+                grid-template-columns: 1fr;
+            }
+            .hero-container {
+                flex-direction: column;
+                text-align: center;
+            }
+            .hero-meta {
+                justify-content: center;
+            }
+        }
+
+        /* Card styles */
+        .content-card {
+            background: white;
+            border-radius: var(--radius-lg);
+            padding: 1.75rem;
+            margin-bottom: 1.75rem;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .content-card h2 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            margin-bottom: 1.25rem;
+            color: var(--text-dark);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Department Pills */
+        .specialties-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .spec-pill {
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            padding: 6px 14px;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: 1px solid rgba(2, 132, 199, 0.2);
+        }
+
+        /* Doctor Roster Cards */
+        .doctors-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .doctor-card {
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .doctor-card:hover {
+            border-color: var(--primary);
+            box-shadow: var(--shadow-md);
+            transform: translateY(-2px);
+        }
+
+        .doc-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .doc-avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--primary-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.15rem;
+            flex-shrink: 0;
+            border: 2px solid white;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .doc-name {
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: var(--text-dark);
+        }
+
+        .doc-dept {
+            font-size: 0.875rem;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .doc-meta {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        .doc-right {
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 6px;
+        }
+
+        .badge-available {
+            background: #dcfce7;
+            color: #15803d;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 9999px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .badge-unavailable {
+            background: #fee2e2;
+            color: #b91c1c;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 9999px;
+        }
+
+        .doc-fee {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        /* Sidebar CTA Booking Box */
+        .booking-cta-card {
+            background: white;
+            border-radius: var(--radius-lg);
+            padding: 2rem 1.5rem;
+            border: 2px solid var(--primary);
+            box-shadow: var(--shadow-lg);
+            text-align: center;
+            position: sticky;
+            top: 90px;
+        }
+
+        .booking-cta-card h3 {
+            font-size: 1.35rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            color: var(--text-dark);
+        }
+
+        .booking-cta-card p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .btn-whatsapp {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            background: #25D366;
+            color: white;
+            text-decoration: none;
+            padding: 0.95rem 1.25rem;
+            border-radius: var(--radius-md);
+            font-weight: 700;
+            font-size: 1.05rem;
+            box-shadow: 0 4px 12px rgba(37, 211, 102, 0.35);
+            transition: all 0.2s ease;
+        }
+
+        .btn-whatsapp:hover {
+            background: #1eb956;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(37, 211, 102, 0.45);
+        }
+
+        .qr-section {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px dashed var(--border-color);
+        }
+
+        .qr-box {
+            width: 160px;
+            height: 160px;
+            margin: 0.75rem auto;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            padding: 8px;
+            background: white;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .qr-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .btn-maps {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: 100%;
+            background: white;
+            color: var(--text-dark);
+            text-decoration: none;
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            font-size: 0.9rem;
+            border: 1px solid var(--border-color);
+            margin-top: 0.75rem;
+            transition: all 0.2s;
+        }
+
+        .btn-maps:hover {
+            background: #f1f5f9;
+        }
+
+        /* Footer */
+        .footer-note {
+            margin-top: 2rem;
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border-color);
+            padding-top: 1.5rem;
+        }
+
+        /* Loading Skeleton */
+        .loading-wrap {
+            text-align: center;
+            padding: 5rem 1rem;
+        }
+
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 4px solid #e2e8f0;
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1.25rem auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Top Navigation -->
+    <header class="top-navbar">
+        <div class="nav-container">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 1.4rem;">🏥</span>
+                <span style="font-weight: 800; font-size: 1.15rem; color: #0f172a;" id="nav-brand-title">MediAssist Network</span>
+            </div>
+            <div class="network-badge">
+                <span>●</span> Verified Hospital Partner
+            </div>
+        </div>
+    </header>
+
+    <!-- Loading State -->
+    <div id="loading-spinner" class="loading-wrap">
+        <div class="spinner"></div>
+        <p style="color: #64748b; font-weight: 500;">Loading verified hospital profile...</p>
+    </div>
+
+    <!-- Main Content (Hidden until loaded) -->
+    <div id="hospital-content" style="display: none;">
+
+        <!-- Branded Hero Header -->
+        <section class="hero-banner" id="hero-banner">
+            <div class="hero-container">
+                <div class="hospital-logo-badge">
+                    <img id="hosp-logo" src="/images/default_hospital_crest.png" alt="Hospital Medical Crest">
+                </div>
+                <div class="hero-info">
+                    <h1 id="hosp-name">Hospital Name</h1>
+                    <div class="hero-tagline" id="hosp-tagline">Multi-Speciality Tertiary Care Hospital</div>
+                    <div class="hero-meta">
+                        <div class="hero-meta-item">
+                            <span>📍</span> <span id="hosp-address">Address, City</span>
+                        </div>
+                        <div class="hero-meta-item">
+                            <span>📞</span> <span id="hosp-phone">Helpdesk: +91-XXXXX</span>
+                        </div>
+                        <div class="hero-meta-item" id="hosp-emergency-wrap">
+                            <span>🚨</span> <span id="hosp-emergency">Emergency 24x7: 108</span>
+                        </div>
+                        <div class="hero-meta-item" id="hosp-reg-wrap">
+                            <span>📋</span> <span id="hosp-reg">NABH Reg: Applied</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Main Body -->
+        <main class="main-container">
+
+            <!-- Highlights Row -->
+            <div class="highlights-grid">
+                <div class="highlight-card">
+                    <div class="highlight-icon">🛏️</div>
+                    <div>
+                        <div class="highlight-title">Bed Capacity</div>
+                        <div class="highlight-val" id="hosp-beds">-- Beds</div>
+                    </div>
+                </div>
+                <div class="highlight-card">
+                    <div class="highlight-icon">🩺</div>
+                    <div>
+                        <div class="highlight-title">Available Doctors</div>
+                        <div class="highlight-val" id="hosp-doc-count">-- Specialists</div>
+                    </div>
+                </div>
+                <div class="highlight-card">
+                    <div class="highlight-icon">⏰</div>
+                    <div>
+                        <div class="highlight-title">OPD Timings</div>
+                        <div class="highlight-val">09:00 AM - 09:00 PM</div>
+                    </div>
+                </div>
+                <div class="highlight-card">
+                    <div class="highlight-icon">⚡</div>
+                    <div>
+                        <div class="highlight-title">Token Check-In</div>
+                        <div class="highlight-val">Live via WhatsApp</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Two-Column Layout -->
+            <div class="layout-grid">
+
+                <!-- Left Column -->
+                <div>
+                    <!-- About Us Section -->
+                    <div class="content-card">
+                        <h2><span>🏛️</span> About the Hospital</h2>
+                        <p id="hosp-about" style="color: #475569; font-size: 0.95rem;">
+                            Leading healthcare institution committed to delivering compassionate, patient-centered care equipped with state-of-the-art diagnostic facilities and specialized medical professionals.
+                        </p>
+                    </div>
+
+                    <!-- Clinical Departments -->
+                    <div class="content-card">
+                        <h2><span>🔬</span> Specialized Departments</h2>
+                        <div class="specialties-wrap" id="specialties-list">
+                            <!-- Filled dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Doctor Roster -->
+                    <div class="content-card">
+                        <h2><span>👨‍⚕️</span> Live Doctor Roster & Consultation Schedule</h2>
+                        <p style="color: #64748b; font-size: 0.875rem; margin-bottom: 1.25rem;">
+                            Instant OPD token slots are updated live. Tap 'Book on WhatsApp' to secure your queue number.
+                        </p>
+                        <div class="doctors-list" id="doctors-list">
+                            <!-- Filled dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Booking Box & Map -->
+                <div>
+                    <div class="booking-cta-card">
+                        <div style="font-size: 2.2rem; margin-bottom: 0.5rem;">📲</div>
+                        <h3>Instant OPD Token</h3>
+                        <p>Skip hospital queues! Book your verified OPD consultation token right inside WhatsApp in 30 seconds.</p>
+                        
+                        <a id="btn-whatsapp-book" href="#" target="_blank" class="btn-whatsapp">
+                            <span>💬</span> Book Token on WhatsApp
+                        </a>
+
+                        <div class="qr-section">
+                            <div style="font-size: 0.85rem; font-weight: 600; color: #475569;">Or scan with Phone Camera:</div>
+                            <div class="qr-box">
+                                <img id="booking-qr" src="" alt="WhatsApp Booking QR Code">
+                            </div>
+                            <div style="font-size: 0.75rem; color: #94a3b8;">Scans directly to MediAssist Booking Bot</div>
+                        </div>
+
+                        <div style="margin-top: 1.5rem; text-align: left;">
+                            <div style="font-size: 0.85rem; font-weight: 700; color: #334155; margin-bottom: 0.25rem;">📍 Hospital Location</div>
+                            <div id="sidebar-addr" style="font-size: 0.8rem; color: #64748b; margin-bottom: 0.5rem;">Address loading...</div>
+                            <a id="btn-maps-dir" href="#" target="_blank" class="btn-maps">
+                                <span>🗺️</span> Open in Google Maps
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer Note -->
+            <div class="footer-note" id="hosp-footer-note">
+                Official OPD Outpatient Partner of MediAssist Digital Health. Valid institutional establishment.
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // WhatsApp Bot configuration
+        const BOT_PHONE = "15551381285"; // MediAssist Meta Cloud Number
+
+        async function loadHospitalPage() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const hospitalId = urlParams.get('id') || '1';
+
+            try {
+                const res = await fetch(`/api/v1/hospitals/${hospitalId}`);
+                if (!res.ok) throw new Error('Hospital not found');
+                const data = await res.json();
+
+                renderHospital(data);
+            } catch (err) {
+                document.getElementById('loading-spinner').innerHTML = `
+                    <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+                    <h2 style="color: #0f172a; margin-bottom: 0.5rem;">Hospital Not Found</h2>
+                    <p style="color: #64748b;">The hospital profile you are looking for is currently unavailable or inactive.</p>
+                    <a href="/" style="display: inline-block; margin-top: 1rem; color: #0284c7; font-weight: 600;">Return to Home</a>
+                `;
+            }
+        }
+
+        function renderHospital(h) {
+            // Apply Brand Accent Color dynamically
+            const brandColor = h.brandColor && h.brandColor.startsWith('#') ? h.brandColor : '#0284c7';
+            document.documentElement.style.setProperty('--primary', brandColor);
+
+            // Calculate darker shade for gradients
+            document.documentElement.style.setProperty('--primary-dark', adjustBrightness(brandColor, -25));
+
+            document.getElementById('page-title').textContent = `${h.name} | MediAssist Network`;
+            document.getElementById('nav-brand-title').textContent = `${h.name} — OPD Portal`;
+
+            // Hero Details
+            document.getElementById('hosp-name').textContent = h.name || 'Hospital';
+            document.getElementById('hosp-tagline').textContent = h.tagline || 'Multi-Speciality Tertiary Care Hospital';
+            document.getElementById('hosp-address').textContent = h.address || 'Location Details';
+            document.getElementById('sidebar-addr').textContent = h.address || '';
+            document.getElementById('hosp-phone').textContent = h.phone ? `Helpdesk: ${h.phone}` : 'Helpdesk: Active';
+
+            if (h.emergencyPhone) {
+                document.getElementById('hosp-emergency').textContent = `24x7 Emergency: ${h.emergencyPhone}`;
+            } else {
+                document.getElementById('hosp-emergency').textContent = `24x7 Emergency: 108`;
+            }
+
+            if (h.registrationNumber) {
+                document.getElementById('hosp-reg').textContent = `Reg No: ${h.registrationNumber}`;
+            } else {
+                document.getElementById('hosp-reg-wrap').style.display = 'none';
+            }
+
+            // Logo
+            if (h.logoUrl) {
+                document.getElementById('hosp-logo').src = h.logoUrl;
+            }
+
+            // Highlights
+            document.getElementById('hosp-beds').textContent = h.numberOfBeds > 0 ? `${h.numberOfBeds} Beds` : '150+ Beds';
+
+            // About text
+            if (h.aboutText && h.aboutText.trim().length > 0) {
+                document.getElementById('hosp-about').textContent = h.aboutText;
+            }
+
+            // Specialties / Departments
+            const specWrap = document.getElementById('specialties-list');
+            specWrap.innerHTML = '';
+            const specs = (h.specialties && h.specialties.trim().length > 0)
+                ? h.specialties.split(',').map(s => s.trim())
+                : ['General Medicine', 'Cardiology', 'Orthopedics', 'Pediatrics', 'ENT', 'Gynecology', 'Emergency Care'];
+
+            specs.forEach(s => {
+                if (s) {
+                    const pill = document.createElement('span');
+                    pill.className = 'spec-pill';
+                    pill.textContent = s;
+                    specWrap.appendChild(pill);
+                }
+            });
+
+            // Doctors list
+            const docsList = document.getElementById('doctors-list');
+            docsList.innerHTML = '';
+            const doctors = h.doctors || [];
+            document.getElementById('hosp-doc-count').textContent = `${doctors.length} Doctors`;
+
+            if (doctors.length === 0) {
+                docsList.innerHTML = `<p style="color: #94a3b8; font-style: italic;">Consultation roster updating. Please message on WhatsApp to view available OPD tokens.</p>`;
+            } else {
+                doctors.forEach(d => {
+                    const card = document.createElement('div');
+                    card.className = 'doctor-card';
+                    const initials = d.name.replace(/^Dr\.\s*/i, '').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+
+                    const availBadge = d.availableToday 
+                        ? `<span class="badge-available">● Available Today</span>` 
+                        : `<span class="badge-unavailable">● On Leave</span>`;
+
+                    card.innerHTML = `
+                        <div class="doc-left">
+                            <div class="doc-avatar">${initials || 'DR'}</div>
+                            <div>
+                                <div class="doc-name">${d.name}</div>
+                                <div class="doc-dept">${d.department} • <span style="color: #64748b; font-weight: normal;">${d.qualification || 'MBBS, MD'}</span></div>
+                                <div class="doc-meta">
+                                    🕒 ${d.firstHalfTime || '09:00 AM - 01:00 PM'} ${d.secondHalfTime ? ' | ' + d.secondHalfTime : ''} 
+                                    &nbsp;•&nbsp; Room: ${d.roomNumber || '101'}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="doc-right">
+                            ${availBadge}
+                            <div class="doc-fee">₹${d.consultationFee || 500}</div>
+                        </div>
+                    `;
+                    docsList.appendChild(card);
+                });
+            }
+
+            // WhatsApp Booking Links & Pre-filled text
+            const waText = encodeURIComponent(`Hi, I want to book an OPD token at ${h.name}`);
+            const waUrl = `https://wa.me/${BOT_PHONE}?text=${waText}`;
+            document.getElementById('btn-whatsapp-book').href = waUrl;
+
+            // Generate high-resolution QR Code
+            const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(waUrl)}&margin=1`;
+            document.getElementById('booking-qr').src = qrApi;
+
+            // Google Maps Link
+            if (h.latitude && h.longitude) {
+                document.getElementById('btn-maps-dir').href = `https://www.google.com/maps/dir/?api=1&destination=${h.latitude},${h.longitude}`;
+            } else {
+                document.getElementById('btn-maps-dir').href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.name + ' ' + (h.address || ''))}`;
+            }
+
+            // Footer Custom Note
+            if (h.customFooterNotes) {
+                document.getElementById('hosp-footer-note').textContent = `${h.customFooterNotes} — MediAssist Institutional Network`;
+            }
+
+            // Show page
+            document.getElementById('loading-spinner').style.display = 'none';
+            document.getElementById('hospital-content').style.display = 'block';
+        }
+
+        // Color brightness adjustment helper for gradients
+        function adjustBrightness(col, percent) {
+            let num = parseInt(col.replace('#', ''), 16);
+            let amt = Math.round(2.55 * percent);
+            let R = (num >> 16) + amt;
+            let G = (num >> 8 & 0x00FF) + amt;
+            let B = (num & 0x0000FF) + amt;
+            return '#' + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+                (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+                (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+        }
+
+        document.addEventListener('DOMContentLoaded', loadHospitalPage);
+    </script>
+</body>
+</html>
