@@ -16,6 +16,7 @@ import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
@@ -48,6 +49,7 @@ public class AppointmentSlipPdfService {
     // In-memory PDF cache: appointmentId -> PDF bytes
     private final Map<Long, byte[]> pdfCache = new ConcurrentHashMap<>();
 
+    @Autowired
     public AppointmentSlipPdfService(PatientProfileRepository patientProfileRepository) {
         this.patientProfileRepository = patientProfileRepository;
     }
