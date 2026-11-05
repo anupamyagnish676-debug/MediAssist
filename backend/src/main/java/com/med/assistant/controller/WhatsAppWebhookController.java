@@ -197,7 +197,15 @@ public class WhatsAppWebhookController {
                 return ResponseEntity.ok("EVENT_RECEIVED");
             }
 
-            dispatchMessage(fromPhone, messageType, message);
+            // Asynchronously dispatch message processing so Meta gets immediate 200 OK acknowledgment (< 25ms)
+            // This prevents Meta from timing out and canceling webhooks
+            java.util.concurrent.CompletableFuture.runAsync(() -> {
+                try {
+                    dispatchMessage(fromPhone, messageType, message);
+                } catch (Exception e) {
+                    logger.error("Error in async message dispatch for phone {}: {}", fromPhone, e.getMessage(), e);
+                }
+            });
 
         } catch (Exception e) {
             logger.error("Error processing inbound message: {}", e.getMessage(), e);
