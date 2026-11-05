@@ -303,6 +303,13 @@ public class WhatsAppWebhookController {
     }
 
     private void handleLocationMessage(String fromPhone, Map<String, Object> location) {
+        // Enforce mandatory demographic registration: if profile not complete, prompt onboarding first
+        if (!patientProfileService.isProfileComplete(fromPhone)) {
+            String firstQuestion = patientProfileService.startOnboarding(fromPhone);
+            whatsAppClient.sendTextMessage(fromPhone, "📍 Location received!\n\nBefore we book your OPD token, please complete your health profile so the doctor has your details:\n\n" + firstQuestion);
+            return;
+        }
+
         double lat = ((Number) location.get("latitude")).doubleValue();
         double lon = ((Number) location.get("longitude")).doubleValue();
 
@@ -348,6 +355,17 @@ public class WhatsAppWebhookController {
                 String summary = profile.map(p -> p.getProfileSummary()).orElse("");
                 whatsAppClient.sendTextMessage(fromPhone, "✅ *Health Profile Saved!*\n\n" + (summary.isBlank() ? "" : "📋 *Your Profile:* " + summary + "\n\n") + "Your medical details are now stored securely. All your appointment slips will include your profile info for the doctor.\n\nShare your location or type *'book opd'* to book an appointment!");
             }
+            return;
+        }
+
+        // Enforce mandatory demographic registration: if profile not complete and not an emergency, start onboarding
+        if (!patientProfileService.isProfileComplete(fromPhone)) {
+            if (geminiAiService.isEmergency(body)) {
+                whatsAppClient.sendTextMessage(fromPhone, geminiAiService.getEmergencyResponse());
+                return;
+            }
+            String firstQuestion = patientProfileService.startOnboarding(fromPhone);
+            whatsAppClient.sendTextMessage(fromPhone, firstQuestion);
             return;
         }
 
@@ -1304,7 +1322,13 @@ public class WhatsAppWebhookController {
                     qrToken = String.format("%06d", java.util.concurrent.ThreadLocalRandom.current().nextInt(100000, 1000000));
                 } while (appointmentRepository.findByQrCodeToken(qrToken).isPresent());
 
-                String rawPatientName = userPatientNames.getOrDefault(fromPhone, "Patient");
+                String rawPatientName = userPatientNames.get(fromPhone);
+                if (rawPatientName == null || rawPatientName.isBlank()) {
+                    rawPatientName = patientProfileService.getProfile(fromPhone)
+                            .map(PatientProfile::getFullName)
+                            .filter(n -> n != null && !n.isBlank())
+                            .orElse("Patient");
+                }
                 // Input sanitization: Strip HTML and dangerous characters to protect PDFBox and web views
                 patientName = rawPatientName.replaceAll("[<>{}\"']", "").trim();
                 if (patientName.isBlank()) patientName = "Patient";
@@ -1829,6 +1853,13 @@ public class WhatsAppWebhookController {
     }
 
     private void sendCustomWelcomeMessage(String fromPhone) {
+        // Enforce mandatory demographic registration: new patients must register first
+        if (!patientProfileService.isProfileComplete(fromPhone)) {
+            String firstQuestion = patientProfileService.startOnboarding(fromPhone);
+            whatsAppClient.sendTextMessage(fromPhone, firstQuestion);
+            return;
+        }
+
         String welcome = """
             👋 *Welcome to MediAssist!* 🩺
             _Your 24/7 Smart Healthcare & OPD Assistant_
@@ -1850,19 +1881,6 @@ public class WhatsAppWebhookController {
         );
 
         whatsAppClient.sendInteractiveButtons(fromPhone, welcome, buttons);
-
-        // Prompt new users to complete their health profile if not done yet
-        if (!patientProfileService.isProfileComplete(fromPhone) && !patientProfileService.isOnboardingInProgress(fromPhone)) {
-            // Small delay feel — send as a separate follow-up
-            whatsAppClient.sendInteractiveButtons(
-                fromPhone,
-                "📋 *Complete Your Health Profile (1 min)*\n\nThis helps doctors know your age, blood group, and allergies before you arrive — making your visit faster and safer.",
-                List.of(
-                    new WhatsAppClientService.ButtonOption("SETUP_PROFILE", "📝 Set Up Profile"),
-                    new WhatsAppClientService.ButtonOption("SKIP_PROFILE", "⏭️ Skip for Now")
-                )
-            );
-        }
     }
 
     private void showMyAlarms(String fromPhone) {

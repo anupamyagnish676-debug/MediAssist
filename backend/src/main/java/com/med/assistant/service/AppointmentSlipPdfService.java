@@ -5,6 +5,8 @@ import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import com.med.assistant.model.Appointment;
+import com.med.assistant.model.PatientProfile;
+import com.med.assistant.repository.PatientProfileRepository;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -41,8 +43,21 @@ public class AppointmentSlipPdfService {
 
     private static final Logger logger = LoggerFactory.getLogger(AppointmentSlipPdfService.class);
 
+    private final PatientProfileRepository patientProfileRepository;
+
     // In-memory PDF cache: appointmentId -> PDF bytes
     private final Map<Long, byte[]> pdfCache = new ConcurrentHashMap<>();
+
+    public AppointmentSlipPdfService(PatientProfileRepository patientProfileRepository) {
+        this.patientProfileRepository = patientProfileRepository;
+    }
+
+    /**
+     * Overloaded constructor for backwards compatibility or testing without repository.
+     */
+    public AppointmentSlipPdfService() {
+        this.patientProfileRepository = null;
+    }
 
     /**
      * Generate a PDF slip and store it in-memory.
@@ -102,9 +117,32 @@ public class AppointmentSlipPdfService {
         String department = appointment.getDoctor() != null ? appointment.getDoctor().getDepartment() : "General Medicine";
         String room = appointment.getDoctor() != null && appointment.getDoctor().getRoomNumber() != null ? appointment.getDoctor().getRoomNumber() : "22";
 
-        // --- Extract Patient Details ---
+        // --- Extract Patient Details & Demographic Profile ---
         String patientName = appointment.getPatientName() != null ? appointment.getPatientName() : "Mr YAGNISH ANUPAM";
         String patientPhone = appointment.getPatientPhone() != null ? appointment.getPatientPhone() : "7978015617";
+        String sexAge = "MALE / 21 Years";
+        String bloodAndAllergy = "";
+
+        if (patientProfileRepository != null && appointment.getPatientPhone() != null) {
+            var profileOpt = patientProfileRepository.findByPhoneNumber(appointment.getPatientPhone());
+            if (profileOpt.isPresent()) {
+                PatientProfile prof = profileOpt.get();
+                if (prof.getFullName() != null && !prof.getFullName().isBlank() && (appointment.getPatientName() == null || appointment.getPatientName().equalsIgnoreCase("Patient"))) {
+                    patientName = prof.getFullName();
+                }
+                String genderStr = (prof.getGender() != null && !prof.getGender().isBlank()) ? prof.getGender().toUpperCase() : "MALE";
+                String ageStr = prof.getAge() != null ? prof.getAge() + " Years" : (prof.getDateOfBirth() != null ? prof.getDateOfBirth().toString() : "Adult");
+                sexAge = genderStr + " / " + ageStr;
+
+                if (prof.getBloodGroup() != null && !prof.getBloodGroup().isBlank()) {
+                    sexAge += " (" + prof.getBloodGroup() + ")";
+                }
+
+                if (prof.getKnownAllergies() != null && !prof.getKnownAllergies().isBlank() && !prof.getKnownAllergies().equalsIgnoreCase("none")) {
+                    bloodAndAllergy = "Allergy: " + prof.getKnownAllergies();
+                }
+            }
+        }
         String dateStr = appointment.getAppointmentDate() != null
                 ? appointment.getAppointmentDate().format(DateTimeFormatter.ofPattern("MMMM d, yyyy"))
                 : "September 25, 2026";
@@ -233,9 +271,13 @@ public class AppointmentSlipPdfService {
                 y -= lineH;
                 drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Patient Name :", truncate(patientName, 22), darkText, darkText, 8.5f);
                 y -= lineH;
-                drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Sex / Age :", "MALE / 21 Years", darkText, mutedText, 8);
+                drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Sex / Age :", truncate(sexAge, 26), darkText, mutedText, 8);
                 y -= lineH;
-                drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Address :", truncate(hospitalAddr.contains(",") ? hospitalAddr.split(",")[1].trim() + ", ODISHA" : "BHUBANESWAR, ODISHA", 24), darkText, mutedText, 8);
+                if (!bloodAndAllergy.isBlank()) {
+                    drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Allergies :", truncate(bloodAndAllergy, 26), darkText, new int[]{185, 28, 28}, 8);
+                } else {
+                    drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Address :", truncate(hospitalAddr.contains(",") ? hospitalAddr.split(",")[1].trim() + ", ODISHA" : "BHUBANESWAR, ODISHA", 24), darkText, mutedText, 8);
+                }
                 y -= lineH;
                 drawGridRow(cs, fontBold, fontRegular, col1X, col1ValX, y, "Visit No :", "OP-00" + serialNo + " (First Visit)", darkText, mutedText, 8);
                 y -= lineH;
