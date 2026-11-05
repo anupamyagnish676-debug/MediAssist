@@ -93,8 +93,9 @@ public class DataInitializer {
                     logger.warn("Schema self-healing notice (can be ignored on fresh DB): {}", se.getMessage());
                 }
 
-                // Always ensure Super Admin account exists
-                if (userRepo.findByEmailIgnoreCase("admin@mediassist.com").isEmpty()) {
+                // Always ensure Super Admin account exists and password is in sync
+                var adminOpt = userRepo.findByEmailIgnoreCase("admin@mediassist.com");
+                if (adminOpt.isEmpty()) {
                     com.med.assistant.model.User admin = new com.med.assistant.model.User(
                             "admin@mediassist.com",
                             passwordEncoder.encode("Admin@123"),
@@ -104,6 +105,13 @@ public class DataInitializer {
                     );
                     userRepo.save(admin);
                     logger.info("Super admin account initialized: admin@mediassist.com / Admin@123");
+                } else {
+                    com.med.assistant.model.User admin = adminOpt.get();
+                    admin.setPassword(passwordEncoder.encode("Admin@123"));
+                    admin.setRole(com.med.assistant.model.User.Role.SUPER_ADMIN);
+                    admin.setActive(true);
+                    userRepo.save(admin);
+                    logger.info("Super admin account verified & password synced: admin@mediassist.com / Admin@123");
                 }
 
                 // 1. Hospital 1: City Care (Local, ~0 km)

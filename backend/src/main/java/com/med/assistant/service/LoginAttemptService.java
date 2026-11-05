@@ -55,6 +55,10 @@ public class LoginAttemptService {
         attempts.remove(key);
     }
 
+    public void resetLockout(String key) {
+        attempts.remove(key);
+    }
+
     /**
      * Returns true if the key is currently locked out.
      * @param key username or IP address
