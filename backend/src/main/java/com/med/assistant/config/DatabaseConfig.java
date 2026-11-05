@@ -148,6 +148,9 @@ public class DatabaseConfig {
                 // Appointments table columns
                 stmt.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded_24h BOOLEAN DEFAULT FALSE;");
                 stmt.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded_2h BOOLEAN DEFAULT FALSE;");
+                stmt.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded_1h BOOLEAN DEFAULT FALSE;");
+                stmt.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded_30m BOOLEAN DEFAULT FALSE;");
+                stmt.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS missed_reschedule_sent BOOLEAN DEFAULT FALSE;");
                 stmt.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded_followup BOOLEAN DEFAULT FALSE;");
 
                 // Patient sessions table

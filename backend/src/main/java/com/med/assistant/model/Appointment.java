@@ -47,6 +47,9 @@ public class Appointment {
 
     private boolean reminded24h = false;
     private boolean reminded2h = false;
+    private boolean reminded1h = false;
+    private boolean reminded30m = false;
+    private boolean missedRescheduleSent = false;
     private boolean remindedFollowup = false;
 
     public enum Status {
@@ -126,6 +129,15 @@ public class Appointment {
 
     public boolean isReminded2h() { return reminded2h; }
     public void setReminded2h(boolean reminded2h) { this.reminded2h = reminded2h; }
+
+    public boolean isReminded1h() { return reminded1h; }
+    public void setReminded1h(boolean reminded1h) { this.reminded1h = reminded1h; }
+
+    public boolean isReminded30m() { return reminded30m; }
+    public void setReminded30m(boolean reminded30m) { this.reminded30m = reminded30m; }
+
+    public boolean isMissedRescheduleSent() { return missedRescheduleSent; }
+    public void setMissedRescheduleSent(boolean missedRescheduleSent) { this.missedRescheduleSent = missedRescheduleSent; }
 
     public boolean isRemindedFollowup() { return remindedFollowup; }
     public void setRemindedFollowup(boolean remindedFollowup) { this.remindedFollowup = remindedFollowup; }
