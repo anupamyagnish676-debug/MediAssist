@@ -2110,21 +2110,21 @@ public class WhatsAppWebhookController {
             String docName = (appt.getDoctor() != null) ? appt.getDoctor().getName() : "your doctor";
             Long doctorId = (appt.getDoctor() != null) ? appt.getDoctor().getId() : null;
 
-            // Delete old appointment
-            appointmentRepository.delete(appt);
+            // Mark old appointment as cancelled so its slot is immediately freed
+            appt.setStatus(Appointment.Status.CANCELLED);
+            appointmentRepository.save(appt);
 
-            whatsAppClient.sendTextMessage(fromPhone, String.format("""
-                    🔄 *Appointment Rescheduling*
-
-                    Your appointment with *Dr. %s* has been cancelled.\n
-                    Please select a new date for your appointment. You can reply with a date like:\n
-                    👉 *tomorrow*\n👉 *Monday*\n👉 *17 Oct*
-                    """, docName
-            ));
-
-            // Put the same doctor back into pending booking flow for easy re-selection
             if (doctorId != null) {
                 userPendingDoctorBooking.put(fromPhone, doctorId);
+                // Immediately present the verified Next Available Slots with live remaining token counts
+                whatsAppClient.sendTextMessage(fromPhone, String.format(
+                        "🔄 *Appointment Released*\n\nYour previous slot with *%s* has been cancelled.\n\n" +
+                        "Checking doctor's live roster for the *Next Available Slots*...",
+                        docName
+                ));
+                promptAppointmentDateSelection(fromPhone, doctorId);
+            } else {
+                whatsAppClient.sendTextMessage(fromPhone, "🔄 Your previous appointment has been cancelled.\n\nType *'book opd'* to view available hospitals and book the next available doctor slot.");
             }
 
         } catch (Exception e) {
