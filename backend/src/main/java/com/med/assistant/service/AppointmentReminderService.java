@@ -4,32 +4,30 @@ import com.med.assistant.model.Appointment;
 import com.med.assistant.repository.AppointmentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Proactive appointment reminder scheduler.
- * Sends WhatsApp reminders 24 hours and 2 hours before appointments.
- * Also sends 48-hour post-visit follow-up messages.
+ * Uses persistent DB flags (reminded24h, reminded2h, remindedFollowup) and
+ * Asia/Kolkata (IST) timezone to guarantee zero redundant reminder dispatches across redeploys.
  */
 @Service
 public class AppointmentReminderService {
 
     private static final Logger logger = LoggerFactory.getLogger(AppointmentReminderService.class);
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd MMM yyyy");
+    private static final ZoneId IST_ZONE = ZoneId.of("Asia/Kolkata");
 
-    // Track already-sent reminders to avoid duplicates across scheduler runs
-    private final Set<String> sent24hReminders = ConcurrentHashMap.newKeySet();
-    private final Set<String> sent2hReminders = ConcurrentHashMap.newKeySet();
-    private final Set<String> sentFollowUps = ConcurrentHashMap.newKeySet();
+    @Value("${app.reminders.enabled:true}")
+    private boolean remindersEnabled;
 
     private final AppointmentRepository appointmentRepository;
     private final WhatsAppClientService whatsAppClient;
@@ -42,53 +40,53 @@ public class AppointmentReminderService {
 
     /**
      * Runs every 30 minutes. Checks for appointments tomorrow (24h reminder)
-     * and appointments today within the next 2-3 hours (2h reminder).
+     * and appointments today within the next 2 hours (2h reminder).
      */
     @Scheduled(fixedDelay = 1800000) // every 30 minutes
     public void sendAppointmentReminders() {
+        if (!remindersEnabled) {
+            return;
+        }
+
         try {
-            LocalDate today = LocalDate.now();
+            ZonedDateTime nowIst = ZonedDateTime.now(IST_ZONE);
+            LocalDate today = nowIst.toLocalDate();
             LocalDate tomorrow = today.plusDays(1);
 
-            // 24-hour reminder: appointments tomorrow
+            // 1. 24-hour reminder: appointments tomorrow that are CONFIRMED
             List<Appointment> tomorrowAppts = appointmentRepository.findByAppointmentDate(tomorrow);
             for (Appointment appt : tomorrowAppts) {
-                if (appt.getStatus() == Appointment.Status.CANCELLED) continue;
+                if (appt.getStatus() != Appointment.Status.CONFIRMED) continue;
+                if (appt.isReminded24h()) continue;
                 if (appt.getPatientPhone() == null || appt.getPatientPhone().isBlank()) continue;
-                String reminderKey = "24H:" + appt.getId();
-                if (sent24hReminders.contains(reminderKey)) continue;
 
                 String msg = build24hReminderMessage(appt);
                 boolean sent = whatsAppClient.sendTextMessage(appt.getPatientPhone(), msg);
                 if (sent) {
-                    sent24hReminders.add(reminderKey);
+                    appt.setReminded24h(true);
+                    appointmentRepository.save(appt);
                     logger.info("24h reminder sent for appointment {} to {}", appt.getId(), appt.getPatientPhone());
                 }
             }
 
-            // 2-hour reminder: appointments today where timeSlot matches the next 2-3 hour window
+            // 2. 2-hour reminder: appointments today where timeSlot matches upcoming 2 hours
             List<Appointment> todayAppts = appointmentRepository.findByAppointmentDate(today);
-            LocalDateTime now = LocalDateTime.now();
             for (Appointment appt : todayAppts) {
-                if (appt.getStatus() == Appointment.Status.CANCELLED) continue;
+                if (appt.getStatus() != Appointment.Status.CONFIRMED) continue;
+                if (appt.isReminded2h()) continue;
                 if (appt.getPatientPhone() == null || appt.getPatientPhone().isBlank()) continue;
-                String reminderKey = "2H:" + appt.getId();
-                if (sent2hReminders.contains(reminderKey)) continue;
 
-                // Parse timeSlot to check if within 2-3 hours from now
-                if (isWithinTwoHours(appt.getTimeSlot(), now)) {
+                // Check if within 2 hours in IST timezone
+                if (isWithinTwoHours(appt.getTimeSlot(), nowIst)) {
                     String msg = build2hReminderMessage(appt);
                     boolean sent = whatsAppClient.sendTextMessage(appt.getPatientPhone(), msg);
                     if (sent) {
-                        sent2hReminders.add(reminderKey);
+                        appt.setReminded2h(true);
+                        appointmentRepository.save(appt);
                         logger.info("2h reminder sent for appointment {} to {}", appt.getId(), appt.getPatientPhone());
                     }
                 }
             }
-
-            // Clean up old sent reminder keys (keep memory bounded)
-            if (sent24hReminders.size() > 5000) sent24hReminders.clear();
-            if (sent2hReminders.size() > 5000) sent2hReminders.clear();
 
         } catch (Exception e) {
             logger.error("Error in appointment reminder scheduler: {}", e.getMessage(), e);
@@ -100,15 +98,19 @@ public class AppointmentReminderService {
      */
     @Scheduled(fixedDelay = 3600000) // every hour
     public void sendPostVisitFollowUps() {
+        if (!remindersEnabled) {
+            return;
+        }
+
         try {
-            LocalDate followUpDate = LocalDate.now().minusDays(2);
+            ZonedDateTime nowIst = ZonedDateTime.now(IST_ZONE);
+            LocalDate followUpDate = nowIst.toLocalDate().minusDays(2);
             List<Appointment> pastAppts = appointmentRepository.findByAppointmentDate(followUpDate);
 
             for (Appointment appt : pastAppts) {
                 if (appt.getStatus() == Appointment.Status.CANCELLED) continue;
+                if (appt.isRemindedFollowup()) continue;
                 if (appt.getPatientPhone() == null || appt.getPatientPhone().isBlank()) continue;
-                String followUpKey = "FOLLOWUP:" + appt.getId();
-                if (sentFollowUps.contains(followUpKey)) continue;
 
                 String msg = buildFollowUpMessage(appt);
                 boolean sent = whatsAppClient.sendInteractiveButtons(
@@ -121,21 +123,26 @@ public class AppointmentReminderService {
                         )
                 );
                 if (sent) {
-                    sentFollowUps.add(followUpKey);
+                    appt.setRemindedFollowup(true);
+                    appointmentRepository.save(appt);
                     logger.info("Post-visit follow-up sent for appointment {} to {}", appt.getId(), appt.getPatientPhone());
                 }
             }
-
-            if (sentFollowUps.size() > 5000) sentFollowUps.clear();
 
         } catch (Exception e) {
             logger.error("Error in post-visit follow-up scheduler: {}", e.getMessage(), e);
         }
     }
 
+    private String formatDoctorName(String docName) {
+        if (docName == null || docName.isBlank()) return "your specialist";
+        String clean = docName.trim();
+        return clean.toLowerCase().startsWith("dr.") ? clean : "Dr. " + clean;
+    }
+
     private String build24hReminderMessage(Appointment appt) {
-        String docName = (appt.getDoctor() != null) ? appt.getDoctor().getName() : "your doctor";
-        String dept = (appt.getDoctor() != null) ? appt.getDoctor().getDepartment() : "";
+        String docName = (appt.getDoctor() != null) ? formatDoctorName(appt.getDoctor().getName()) : "your doctor";
+        String dept = (appt.getDoctor() != null && appt.getDoctor().getDepartment() != null) ? " (" + appt.getDoctor().getDepartment() + ")" : "";
         String hospital = (appt.getHospital() != null) ? appt.getHospital().getName() : "the clinic";
         String timeSlot = (appt.getTimeSlot() != null) ? appt.getTimeSlot() : "your scheduled time";
         String patientName = (appt.getPatientName() != null && !appt.getPatientName().isBlank()) ? appt.getPatientName() : "Patient";
@@ -146,7 +153,7 @@ public class AppointmentReminderService {
                 Hello %s! You have an OPD appointment scheduled for *tomorrow*.
 
                 🏥 *Hospital:* %s
-                👨‍⚕️ *Doctor:* Dr. %s (%s)
+                👨‍⚕️ *Doctor:* %s%s
                 🎫 *Token No.:* #%02d
                 📅 *Date:* %s
                 🕐 *Time Slot:* %s
@@ -166,7 +173,7 @@ public class AppointmentReminderService {
     }
 
     private String build2hReminderMessage(Appointment appt) {
-        String docName = (appt.getDoctor() != null) ? appt.getDoctor().getName() : "your doctor";
+        String docName = (appt.getDoctor() != null) ? formatDoctorName(appt.getDoctor().getName()) : "your doctor";
         String hospital = (appt.getHospital() != null) ? appt.getHospital().getName() : "the clinic";
         String patientName = (appt.getPatientName() != null && !appt.getPatientName().isBlank()) ? appt.getPatientName() : "Patient";
 
@@ -176,23 +183,24 @@ public class AppointmentReminderService {
                 Hello %s! This is your 2-hour reminder.
 
                 🏥 *Hospital:* %s
-                👨‍⚕️ *Doctor:* Dr. %s
+                👨‍⚕️ *Doctor:* %s
                 🎫 *Token No.:* *#%02d*
 
                 Please start heading to the hospital now. Type *queue* to check how many patients are ahead of you.
+                Reply *CANCEL* if you cannot make it.
                 """,
                 patientName, hospital, docName, appt.getSerialNumber()
         );
     }
 
     private String buildFollowUpMessage(Appointment appt) {
-        String docName = (appt.getDoctor() != null) ? appt.getDoctor().getName() : "your doctor";
+        String docName = (appt.getDoctor() != null) ? formatDoctorName(appt.getDoctor().getName()) : "your doctor";
         String patientName = (appt.getPatientName() != null && !appt.getPatientName().isBlank()) ? appt.getPatientName() : "there";
 
         return String.format("""
                 💙 *Post-Visit Check-in from MediAssist*
 
-                Hi %s! It's been 2 days since your visit with Dr. %s.
+                Hi %s! It's been 2 days since your visit with %s.
 
                 How are you feeling? Please let us know:
                 """,
@@ -201,22 +209,28 @@ public class AppointmentReminderService {
     }
 
     /**
-     * Checks if an appointment's timeSlot falls within 2-3 hours from now.
-     * Handles common formats: "Morning (9-12)", "10:00 AM", "AM", "PM", etc.
+     * Checks if an appointment's timeSlot falls within 2 hours in IST timezone.
      */
-    private boolean isWithinTwoHours(String timeSlot, LocalDateTime now) {
+    private boolean isWithinTwoHours(String timeSlot, ZonedDateTime nowIst) {
         if (timeSlot == null) return false;
         String lower = timeSlot.toLowerCase();
-        int currentHour = now.getHour();
+        int currentHour = nowIst.getHour();
 
-        // Morning shift: roughly 9-12
-        if (lower.contains("morning") || lower.contains("am") || lower.contains("9") || lower.contains("10")) {
+        // If slot is morning (typically 09:00 - 13:00)
+        if (lower.contains("morning") || lower.contains("1st half") || lower.contains("09:") || lower.contains("10:") || lower.contains("11:")) {
             return currentHour >= 7 && currentHour <= 10;
         }
-        // Afternoon shift: roughly 2-5
-        if (lower.contains("afternoon") || lower.contains("evening") || lower.contains("pm") || lower.contains("14") || lower.contains("2")) {
+
+        // If slot is evening (typically 17:00 - 20:00)
+        if (lower.contains("evening") || lower.contains("2nd half") || lower.contains("05:") || lower.contains("06:") || lower.contains("07:") || lower.contains("17:") || lower.contains("18:")) {
+            return currentHour >= 15 && currentHour <= 17;
+        }
+
+        // Afternoon (14:00 - 17:00)
+        if (lower.contains("afternoon") || lower.contains("02:") || lower.contains("03:") || lower.contains("14:") || lower.contains("15:")) {
             return currentHour >= 12 && currentHour <= 14;
         }
+
         return false;
     }
 }

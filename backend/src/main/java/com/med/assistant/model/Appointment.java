@@ -45,6 +45,10 @@ public class Appointment {
     private String feedbackText;
     private LocalDateTime createdAt = LocalDateTime.now();
 
+    private boolean reminded24h = false;
+    private boolean reminded2h = false;
+    private boolean remindedFollowup = false;
+
     public enum Status {
         CONFIRMED,
         CHECKED_IN,
@@ -116,4 +120,13 @@ public class Appointment {
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public boolean isReminded24h() { return reminded24h; }
+    public void setReminded24h(boolean reminded24h) { this.reminded24h = reminded24h; }
+
+    public boolean isReminded2h() { return reminded2h; }
+    public void setReminded2h(boolean reminded2h) { this.reminded2h = reminded2h; }
+
+    public boolean isRemindedFollowup() { return remindedFollowup; }
+    public void setRemindedFollowup(boolean remindedFollowup) { this.remindedFollowup = remindedFollowup; }
 }
