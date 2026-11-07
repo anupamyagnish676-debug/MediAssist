@@ -78,6 +78,7 @@ public class WhatsAppWebhookController {
     private final Map<String, double[]> userLocation = new ConcurrentHashMap<>();
     private final Map<String, Long> userPendingDoctorBooking = new ConcurrentHashMap<>();
     private final Map<String, List<Long>> userRecentHospitals = new ConcurrentHashMap<>();
+    private final Map<String, List<LocalDate>> userRecentDateChoices = new ConcurrentHashMap<>();
     private final Map<String, String> userPatientNames = new ConcurrentHashMap<>();
     private final Map<String, String> userLanguagePref = new ConcurrentHashMap<>();
 
@@ -250,25 +251,30 @@ public class WhatsAppWebhookController {
     }
 
     private void dispatchMessage(String fromPhone, String type, Map<String, Object> message) {
-        switch (type) {
-            case "location" -> handleLocationMessage(fromPhone, (Map<String, Object>) message.get("location"));
-            case "text" -> handleTextMessage(fromPhone, (Map<String, Object>) message.get("text"));
-            case "interactive" -> handleInteractiveMessage(fromPhone, (Map<String, Object>) message.get("interactive"));
-            case "image", "document" -> java.util.concurrent.CompletableFuture.runAsync(() -> {
-                try {
-                    handleDocumentMessage(fromPhone, type, message);
-                } catch (Exception e) {
-                    logger.error("Error in async document/image processing: {}", e.getMessage(), e);
-                }
-            });
-            case "audio" -> java.util.concurrent.CompletableFuture.runAsync(() -> {
-                try {
-                    handleAudioVoiceNote(fromPhone, (Map<String, Object>) message.get("audio"));
-                } catch (Exception e) {
-                    logger.error("Error in async audio note processing: {}", e.getMessage(), e);
-                }
-            });
-            default -> whatsAppClient.sendTextMessage(fromPhone, "Hello! Welcome to the Clinical Health Desk. Send your symptoms, share your location to book an OPD token with an available doctor, or upload prescriptions and lab reports.");
+        try {
+            switch (type) {
+                case "location" -> handleLocationMessage(fromPhone, (Map<String, Object>) message.get("location"));
+                case "text" -> handleTextMessage(fromPhone, (Map<String, Object>) message.get("text"));
+                case "interactive" -> handleInteractiveMessage(fromPhone, (Map<String, Object>) message.get("interactive"));
+                case "image", "document" -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    try {
+                        handleDocumentMessage(fromPhone, type, message);
+                    } catch (Exception e) {
+                        logger.error("Error in async document/image processing: {}", e.getMessage(), e);
+                    }
+                });
+                case "audio" -> java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    try {
+                        handleAudioVoiceNote(fromPhone, (Map<String, Object>) message.get("audio"));
+                    } catch (Exception e) {
+                        logger.error("Error in async audio note processing: {}", e.getMessage(), e);
+                    }
+                });
+                default -> whatsAppClient.sendTextMessage(fromPhone, "Hello! Welcome to the Clinical Health Desk. Send your symptoms, share your location to book an OPD token with an available doctor, or upload prescriptions and lab reports.");
+            }
+        } catch (Exception e) {
+            logger.error("Error in dispatchMessage for phone {}: {}", fromPhone, e.getMessage(), e);
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ We encountered a temporary delay processing your request. Type *'book opd'* to see available doctors or send your symptoms.");
         }
     }
 
@@ -376,6 +382,7 @@ public class WhatsAppWebhookController {
         }
 
         String lower = body.toLowerCase().trim();
+        String cleaned = lower.replaceAll("[⚡🎫🏥🩺\u200B]", "").trim();
 
         // 0. Language selection trigger
         if (lower.equals("hindi") || lower.equals("हिंदी") || lower.equals("language") || lower.equals("bhasha") || lower.equals("भाषा") || lower.equals("bengali") || lower.equals("বাংলা")) {
@@ -396,7 +403,9 @@ public class WhatsAppWebhookController {
         }
 
         // 0a. Express 1-tap booking command
-        if (lower.equals("express") || lower.equals("quick token") || lower.equals("express token") || lower.equals("urgent token")) {
+        if (cleaned.equals("express") || cleaned.contains("express opd") || cleaned.contains("express token") 
+                || cleaned.contains("urgent token") || cleaned.contains("quick token")
+                || cleaned.equals("express booking")) {
             handleExpressBooking(fromPhone);
             return;
         }
@@ -468,9 +477,27 @@ public class WhatsAppWebhookController {
             }
         }
 
+        // 2a-0. Direct number selection for pending date choices (e.g. "1", "2", "3")
+        if (cleaned.matches("^[1-9]$") && userRecentDateChoices.containsKey(fromPhone)) {
+            int selIdx = Integer.parseInt(cleaned) - 1;
+            List<LocalDate> dates = userRecentDateChoices.get(fromPhone);
+            if (dates != null && selIdx >= 0 && selIdx < dates.size()) {
+                LocalDate chosen = dates.get(selIdx);
+                Long doctorId = userPendingDoctorBooking.get(fromPhone);
+                if (doctorId != null) {
+                    Doctor doc = doctorRepository.findById(doctorId).orElse(null);
+                    if (doc != null) {
+                        userRecentDateChoices.remove(fromPhone);
+                        promptShiftOrTimeSelection(fromPhone, doc, chosen);
+                        return;
+                    }
+                }
+            }
+        }
+
         // 2a-1. Direct number selection for recently shown partner hospitals (e.g. "1", "2", "3")
-        if (lower.matches("^[1-5]$") && userRecentHospitals.containsKey(fromPhone)) {
-            int selIdx = Integer.parseInt(lower) - 1;
+        if (cleaned.matches("^[1-5]$") && userRecentHospitals.containsKey(fromPhone)) {
+            int selIdx = Integer.parseInt(cleaned) - 1;
             List<Long> recentHospIds = userRecentHospitals.get(fromPhone);
             if (recentHospIds != null && selIdx >= 0 && selIdx < recentHospIds.size()) {
                 handleHospitalSelection(fromPhone, recentHospIds.get(selIdx));
@@ -519,8 +546,9 @@ public class WhatsAppWebhookController {
             handleDiscoverGoogleMaps(fromPhone);
             return;
         }
-        if (lower.contains("instant booking") || lower.contains("partner hospital") || lower.contains("partner clinic") 
-                || lower.contains("book token") || lower.contains("book opd")) {
+        if (cleaned.contains("instant booking") || cleaned.contains("partner hospital") || cleaned.contains("partner clinic") 
+                || cleaned.contains("book token") || cleaned.contains("book opd") || cleaned.contains("instant opd")
+                || cleaned.contains("opd token") || cleaned.equals("book")) {
             handleDiscoverInstantBooking(fromPhone);
             return;
         }
@@ -774,42 +802,99 @@ public class WhatsAppWebhookController {
     }
 
     private void handleExpressBooking(String fromPhone) {
-        double[] loc = getOrRestoreUserLocation(fromPhone);
-        if (loc == null) {
-            whatsAppClient.sendTextMessage(fromPhone, "📍 Please share your current location pin via WhatsApp first so we can find the closest open clinic!");
-            return;
-        }
+        try {
+            double[] loc = getOrRestoreUserLocation(fromPhone);
+            List<LocationService.NearbyHospitalResult> local = java.util.Collections.emptyList();
+            String preferredDept = userTriageDept.getOrDefault(fromPhone, "General Medicine");
 
-        String preferredDept = userTriageDept.getOrDefault(fromPhone, "General Medicine");
-        List<LocationService.NearbyHospitalResult> local = locationService.findLocalHospitalsWithSmartFallback(loc[0], loc[1], preferredDept);
+            if (loc != null) {
+                local = locationService.findLocalHospitalsWithSmartFallback(loc[0], loc[1], preferredDept);
+            }
 
-        if (local.isEmpty()) {
-            whatsAppClient.sendTextMessage(fromPhone, "⚠️ No partner clinics with open OPD slots found near your location today.");
-            return;
-        }
-
-        // Find first doctor with open tokens today
-        Doctor selectedDoctor = null;
-        for (LocationService.NearbyHospitalResult r : local) {
-            List<Doctor> docs = doctorRepository.findByHospitalId(r.hospital().getId());
-            for (Doctor d : docs) {
-                if (d.isAvailableToday() && d.isAvailableOnDay(LocalDate.now().getDayOfWeek())) {
-                    int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(d.getId(), LocalDate.now());
-                    if (booked < d.getDailyTokenLimit()) {
-                        selectedDoctor = d;
-                        break;
-                    }
+            // Fallback: If no GPS location or no local hospital within radius, load all active partner hospitals
+            List<Hospital> hospitalsToScan = new ArrayList<>();
+            if (!local.isEmpty()) {
+                for (LocationService.NearbyHospitalResult r : local) {
+                    hospitalsToScan.add(r.hospital());
+                }
+            } else {
+                hospitalsToScan = hospitalRepository.findByActiveTrue();
+                if (hospitalsToScan.isEmpty()) {
+                    hospitalsToScan = hospitalRepository.findAll();
                 }
             }
-            if (selectedDoctor != null) break;
-        }
 
-        if (selectedDoctor == null) {
-            whatsAppClient.sendTextMessage(fromPhone, "⚠️ All doctor tokens near you are fully booked for today. Please pick another date or specialist.");
-            return;
-        }
+            if (hospitalsToScan.isEmpty()) {
+                whatsAppClient.sendTextMessage(fromPhone, "⚠️ Currently, no partner hospitals are registered on MediAssist. Please check back soon or contact support.");
+                return;
+            }
 
-        bookAppointmentWithPreferredTime(fromPhone, selectedDoctor.getId(), LocalDate.now(), "DEFAULT");
+            LocalDate today = LocalDate.now();
+            Doctor selectedDoctor = null;
+            LocalDate bookingDate = today;
+
+            // 1. Try finding a doctor with open slots TODAY during active shift hours
+            for (Hospital h : hospitalsToScan) {
+                List<Doctor> docs = doctorRepository.findByHospitalId(h.getId());
+                for (Doctor d : docs) {
+                    if (d.isAvailableToday() && d.isAvailableOnDay(today.getDayOfWeek())) {
+                        int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(d.getId(), today);
+                        if (booked < d.getDailyTokenLimit()) {
+                            List<Appointment> bookedAppts = appointmentRepository.findByDoctorIdAndAppointmentDateOrderBySerialNumberAsc(d.getId(), today);
+                            var match = opdScheduleService.findNearestAvailableSlot(d, today, bookedAppts, "DEFAULT");
+                            if (match != null) {
+                                selectedDoctor = d;
+                                bookingDate = today;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (selectedDoctor != null) break;
+            }
+
+            // 2. If no slots available today (e.g. night time, shift ended, off-day), auto-find NEXT working day!
+            if (selectedDoctor == null) {
+                for (int dayOffset = 1; dayOffset <= 7; dayOffset++) {
+                    LocalDate candidateDate = today.plusDays(dayOffset);
+                    for (Hospital h : hospitalsToScan) {
+                        List<Doctor> docs = doctorRepository.findByHospitalId(h.getId());
+                        for (Doctor d : docs) {
+                            if (d.isAvailableOnDay(candidateDate.getDayOfWeek())) {
+                                int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(d.getId(), candidateDate);
+                                if (booked < d.getDailyTokenLimit()) {
+                                    selectedDoctor = d;
+                                    bookingDate = candidateDate;
+                                    break;
+                                }
+                            }
+                        }
+                        if (selectedDoctor != null) break;
+                    }
+                    if (selectedDoctor != null) break;
+                }
+            }
+
+            if (selectedDoctor == null) {
+                // If every doctor is fully booked across the week, present the interactive clinics menu
+                handleDiscoverInstantBooking(fromPhone);
+                return;
+            }
+
+            // If booking for a future date because today's slots ended, inform the patient politely
+            if (!bookingDate.equals(today)) {
+                String dayName = bookingDate.equals(today.plusDays(1)) ? "Tomorrow" : bookingDate.format(DateTimeFormatter.ofPattern("EEEE, d MMM"));
+                whatsAppClient.sendTextMessage(fromPhone, String.format(
+                        "ℹ️ *Today's OPD shift hours have ended.* Securing the *First Available Slot* for *%s* (%s)...",
+                        selectedDoctor.getName(), dayName
+                ));
+            }
+
+            bookAppointmentWithPreferredTime(fromPhone, selectedDoctor.getId(), bookingDate, "DEFAULT");
+        } catch (Exception e) {
+            logger.error("Error in handleExpressBooking for {}: {}", fromPhone, e.getMessage(), e);
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ We could not complete instant booking right now. Please type *'book opd'* to select your doctor.");
+        }
     }
 
     private void sendMedicalLockerLink(String fromPhone) {
@@ -857,84 +942,87 @@ public class WhatsAppWebhookController {
     }
 
     private void handleDiscoverInstantBooking(String fromPhone) {
-        double[] loc = getOrRestoreUserLocation(fromPhone);
-        if (loc == null) {
-            whatsAppClient.sendTextMessage(fromPhone, "📍 Please share your current location pin via WhatsApp first so we can find partner hospitals in your area!");
-            return;
-        }
+        try {
+            double[] loc = getOrRestoreUserLocation(fromPhone);
+            String preferredDept = userTriageDept.getOrDefault(fromPhone, "General Medicine");
 
-        String preferredDept = userTriageDept.get(fromPhone);
-        if (preferredDept == null || preferredDept.isBlank()) {
-            preferredDept = "General Medicine";
-        }
-
-        List<LocationService.NearbyHospitalResult> local = locationService.findLocalHospitalsWithSmartFallback(loc[0], loc[1], preferredDept);
-
-        if (local.isEmpty()) {
-            String msg = "⚠️ *No Partner Clinics Available Within 35 km*\n\n"
-                    + "Currently, there are no registered MediAssist partner clinics with OPD tokens open in your immediate area.\n\n"
-                    + "👉 Tap below to view all hospitals and clinics near you on Google Maps:";
-            whatsAppClient.sendInteractiveButtons(
-                    fromPhone,
-                    msg,
-                    List.of(new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ View on Maps"))
-            );
-            return;
-        }
-
-        // Cache recent hospitals for direct number selection (1, 2, 3)
-        userRecentHospitals.put(fromPhone, local.stream().map(r -> r.hospital().getId()).toList());
-
-        List<Map<String, String>> rows = new ArrayList<>();
-        for (LocationService.NearbyHospitalResult res : local) {
-            Hospital h = res.hospital();
-            String name = h.getName() != null ? h.getName().trim() : "Clinic";
-            if (name.length() > 24) name = name.substring(0, 24).trim();
-            String desc = String.format(java.util.Locale.US, "%.1f km • %d doc(s) on-duty", res.distanceKm(), res.availableDoctorsCount());
-            if (desc.length() > 72) desc = desc.substring(0, 72);
-            rows.add(Map.of(
-                    "id", "HOSP_" + h.getId(),
-                    "title", name,
-                    "description", desc
-            ));
-        }
-
-        String body = "🏥 *Partner Hospitals for Instant Booking*\n"
-                + "🎯 *Specialty:* *" + preferredDept + "*\n\n"
-                + "Select a hospital below to view available *" + preferredDept + "* doctors and book your OPD queue token:";
-
-        boolean sent = whatsAppClient.sendInteractiveList(
-                fromPhone,
-                "Partner Hospitals",
-                body,
-                "Select Hospital",
-                rows
-        );
-
-        if (!sent) {
-            // Text Fallback if interactive list fails or unsupported
-            StringBuilder sb = new StringBuilder();
-            sb.append("🏥 *Partner Hospitals for Instant Booking*\n");
-            sb.append("🎯 *Specialty:* *").append(preferredDept).append("*\n\n");
-            sb.append("Please select a hospital by replying with its number:\n\n");
-            for (int i = 0; i < local.size(); i++) {
-                Hospital h = local.get(i).hospital();
-                sb.append((i + 1)).append("️⃣ *").append(h.getName()).append("*\n");
-                sb.append("   📍 ").append(String.format(java.util.Locale.US, "%.1f", local.get(i).distanceKm())).append(" km away • ")
-                        .append(local.get(i).availableDoctorsCount()).append(" doctor(s) on-duty\n");
-                sb.append("   🧭 Directions: ").append(local.get(i).googleMapsDirectionsUrl()).append("\n\n");
+            List<LocationService.NearbyHospitalResult> local = java.util.Collections.emptyList();
+            if (loc != null) {
+                local = locationService.findLocalHospitalsWithSmartFallback(loc[0], loc[1], preferredDept);
             }
-            sb.append("👉 Reply with *1*, *2*, or *3* to view available doctors!");
-            whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+
+            List<Hospital> hospitalsToShow = new ArrayList<>();
+            if (!local.isEmpty()) {
+                for (LocationService.NearbyHospitalResult res : local) {
+                    hospitalsToShow.add(res.hospital());
+                }
+            } else {
+                hospitalsToShow = hospitalRepository.findByActiveTrue();
+                if (hospitalsToShow.isEmpty()) {
+                    hospitalsToShow = hospitalRepository.findAll();
+                }
+            }
+
+            if (hospitalsToShow.isEmpty()) {
+                whatsAppClient.sendTextMessage(fromPhone, "⚠️ Currently no partner hospitals are active. Please check back soon.");
+                return;
+            }
+
+            // Cache recent hospitals for direct number selection (1, 2, 3)
+            userRecentHospitals.put(fromPhone, hospitalsToShow.stream().map(Hospital::getId).toList());
+
+            List<Map<String, String>> rows = new ArrayList<>();
+            for (Hospital h : hospitalsToShow) {
+                String name = h.getName() != null ? h.getName().trim() : "Clinic";
+                if (name.length() > 24) name = name.substring(0, 24).trim();
+                int docCount = doctorRepository.findByHospitalId(h.getId()).size();
+                String desc = (h.getCity() != null ? h.getCity() + " • " : "") + docCount + " doctor(s)";
+                if (desc.length() > 72) desc = desc.substring(0, 72);
+                rows.add(Map.of(
+                        "id", "HOSP_" + h.getId(),
+                        "title", name,
+                        "description", desc
+                ));
+            }
+
+            String body = "🏥 *Partner Hospitals for Instant Booking*\n"
+                    + "🎯 *Specialty:* *" + preferredDept + "*\n\n"
+                    + "Select a hospital below to view available doctors and book your OPD queue token:";
+
+            boolean sent = whatsAppClient.sendInteractiveList(
+                    fromPhone,
+                    "Partner Hospitals",
+                    body,
+                    "Select Hospital",
+                    rows
+            );
+
+            if (!sent) {
+                // Text Fallback if interactive list fails or unsupported
+                StringBuilder sb = new StringBuilder();
+                sb.append("🏥 *Partner Hospitals for Instant Booking*\n");
+                sb.append("🎯 *Specialty:* *").append(preferredDept).append("*\n\n");
+                sb.append("Please select a hospital by replying with its number:\n\n");
+                for (int i = 0; i < hospitalsToShow.size(); i++) {
+                    Hospital h = hospitalsToShow.get(i);
+                    sb.append((i + 1)).append("️⃣ *").append(h.getName()).append("*\n");
+                    sb.append("   📍 ").append(h.getAddress() != null ? h.getAddress().trim() : (h.getCity() != null ? h.getCity() : "Hospital Campus")).append("\n\n");
+                }
+                sb.append("👉 Reply with *1*, *2*, or *3* to view available doctors!");
+                whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+            }
+        } catch (Exception e) {
+            logger.error("Error in handleDiscoverInstantBooking for {}: {}", fromPhone, e.getMessage(), e);
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ Could not load hospitals right now. Please type *'book opd'* or try again shortly.");
         }
     }
 
     private void handleHospitalSelection(String fromPhone, Long hospitalId) {
         Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
-        List<Doctor> allDoctors = doctorRepository.findByHospitalIdAndAvailableTodayTrue(hospitalId);
+        List<Doctor> allDoctors = doctorRepository.findByHospitalId(hospitalId);
 
         if (allDoctors.isEmpty()) {
-            whatsAppClient.sendTextMessage(fromPhone, "No doctors are currently available at this hospital today. Please try another hospital or view Google Maps.");
+            whatsAppClient.sendTextMessage(fromPhone, "No doctors are currently available at this hospital. Please try another hospital or view Google Maps.");
             return;
         }
 
@@ -1086,6 +1174,7 @@ public class WhatsAppWebhookController {
         userPendingDoctorBooking.put(fromPhone, doctorId);
 
         List<Map<String, String>> dateRows = new ArrayList<>();
+        List<LocalDate> candidateDates = new ArrayList<>();
         LocalDate today = LocalDate.now();
 
         // Offer next 6 days with live slot availability count
@@ -1114,6 +1203,7 @@ public class WhatsAppWebhookController {
             } else if (remaining > 0) {
                 desc = "🟢 " + remaining + " tokens left (Next: #" + String.format("%02d", booked + 1) + ")";
                 rowId = "APPTDATE_" + doctorId + "_" + d.toString();
+                candidateDates.add(d);
             } else {
                 desc = "🔴 FULL (0 tokens available)";
                 rowId = "APPTDATE_" + doctorId + "_" + d.toString();
@@ -1126,6 +1216,8 @@ public class WhatsAppWebhookController {
                     "description", desc
             ));
         }
+
+        userRecentDateChoices.put(fromPhone, candidateDates);
 
         String bodyText = String.format(
                 "📅 *Select Preferred Consultation Date*\n\n" +
@@ -1143,13 +1235,28 @@ public class WhatsAppWebhookController {
                 doc.getAvailableTime() != null ? doc.getAvailableTime() : "Regular OPD Hours"
         );
 
-        whatsAppClient.sendInteractiveList(
+        boolean sent = whatsAppClient.sendInteractiveList(
                 fromPhone,
                 "Available Dates",
                 bodyText,
-                "Choose Date 📅",
+                "Choose Date",
                 dateRows
         );
+
+        if (!sent) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(bodyText).append("\n\n");
+            sb.append("👉 *Reply with the number to select your date:*\n\n");
+            for (int i = 0; i < candidateDates.size(); i++) {
+                LocalDate cd = candidateDates.get(i);
+                String label = cd.equals(today) ? "Today" : (cd.equals(today.plusDays(1)) ? "Tomorrow" : cd.format(DateTimeFormatter.ofPattern("EEE, d MMM")));
+                int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doctorId, cd);
+                int remaining = Math.max(0, doc.getDailyTokenLimit() - booked);
+                sb.append((i + 1)).append("️⃣ *").append(label).append(" (").append(cd.format(DateTimeFormatter.ofPattern("d MMM"))).append(")*\n");
+                sb.append("   🟢 ").append(remaining).append(" tokens left (Next: #").append(String.format("%02d", booked + 1)).append(")\n\n");
+            }
+            whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+        }
     }
 
     private void handleAppointmentDateSelection(String fromPhone, String payload) {
@@ -1253,6 +1360,7 @@ public class WhatsAppWebhookController {
     private void promptSlotsFullAndShowAlternatives(String fromPhone, Doctor doc, LocalDate fullDate) {
         LocalDate today = LocalDate.now();
         List<Map<String, String>> altRows = new ArrayList<>();
+        List<LocalDate> candidateDates = new ArrayList<>();
 
         for (int i = 0; i < 7; i++) {
             LocalDate d = today.plusDays(i);
@@ -1264,6 +1372,7 @@ public class WhatsAppWebhookController {
             int remaining = Math.max(0, doc.getDailyTokenLimit() - booked);
 
             if (remaining > 0) {
+                candidateDates.add(d);
                 String title;
                 if (d.equals(today)) title = "Today (" + d.format(DateTimeFormatter.ofPattern("EEE, d MMM")) + ")";
                 else if (d.equals(today.plusDays(1))) title = "Tomorrow (" + d.format(DateTimeFormatter.ofPattern("EEE, d MMM")) + ")";
@@ -1281,6 +1390,9 @@ public class WhatsAppWebhookController {
             }
         }
 
+        userRecentDateChoices.put(fromPhone, candidateDates);
+        userPendingDoctorBooking.put(fromPhone, doc.getId());
+
         String fullDateName = fullDate.format(DateTimeFormatter.ofPattern("EEEE, d MMMM yyyy"));
 
         if (altRows.isEmpty()) {
@@ -1294,20 +1406,35 @@ public class WhatsAppWebhookController {
 
         String alertText = String.format(
                 "⚠️ *No Slots Available on %s!*\n\n" +
-                "All %d daily tokens for *%s* on this date are fully booked.\n\n" +
+                "All %d daily tokens for *%s* on this date are fully booked or shift hours have ended.\n\n" +
                 "👉 *Please select another date with available slots below:*",
                 fullDateName,
                 doc.getDailyTokenLimit(),
                 doc.getName()
         );
 
-        whatsAppClient.sendInteractiveList(
+        boolean sent = whatsAppClient.sendInteractiveList(
                 fromPhone,
                 "Other Open Dates",
                 alertText,
-                "Select Other Date 📅",
+                "Select Date",
                 altRows
         );
+
+        if (!sent) {
+            StringBuilder sb = new StringBuilder();
+            sb.append(alertText).append("\n\n");
+            sb.append("👉 *Reply with the number to select an open date:*\n\n");
+            for (int i = 0; i < candidateDates.size(); i++) {
+                LocalDate cd = candidateDates.get(i);
+                String label = cd.equals(today) ? "Today" : (cd.equals(today.plusDays(1)) ? "Tomorrow" : cd.format(DateTimeFormatter.ofPattern("EEE, d MMM")));
+                int booked = appointmentRepository.countByDoctorIdAndAppointmentDate(doc.getId(), cd);
+                int remaining = Math.max(0, doc.getDailyTokenLimit() - booked);
+                sb.append((i + 1)).append("️⃣ *").append(label).append(" (").append(cd.format(DateTimeFormatter.ofPattern("d MMM"))).append(")*\n");
+                sb.append("   🟢 ").append(remaining).append(" tokens available (Next: #").append(String.format("%02d", booked + 1)).append(")\n\n");
+            }
+            whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+        }
     }
 
     private void bookAppointmentForDoctor(String fromPhone, Long doctorId) {
