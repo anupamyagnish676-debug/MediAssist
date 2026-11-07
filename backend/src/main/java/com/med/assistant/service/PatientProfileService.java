@@ -58,6 +58,13 @@ public class PatientProfileService {
                 .orElse(false);
     }
 
+    public void cancelOnboarding(String phone) {
+        profileRepository.findByPhoneNumber(phone).ifPresent(p -> {
+            p.setOnboardingStep(0);
+            profileRepository.save(p);
+        });
+    }
+
     /**
      * Processes user input during the onboarding flow.
      * Returns the next question to ask, or null if onboarding is complete.

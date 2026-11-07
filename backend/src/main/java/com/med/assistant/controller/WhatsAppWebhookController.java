@@ -78,6 +78,7 @@ public class WhatsAppWebhookController {
     private final Map<String, double[]> userLocation = new ConcurrentHashMap<>();
     private final Map<String, Long> userPendingDoctorBooking = new ConcurrentHashMap<>();
     private final Map<String, List<Long>> userRecentHospitals = new ConcurrentHashMap<>();
+    private final Map<String, List<Long>> userRecentDoctors = new ConcurrentHashMap<>();
     private final Map<String, List<LocalDate>> userRecentDateChoices = new ConcurrentHashMap<>();
     private final Map<String, String> userPatientNames = new ConcurrentHashMap<>();
     private final Map<String, String> userLanguagePref = new ConcurrentHashMap<>();
@@ -317,12 +318,6 @@ public class WhatsAppWebhookController {
     }
 
     private void handleLocationMessage(String fromPhone, Map<String, Object> location) {
-        // Enforce mandatory demographic registration via web portal
-        if (!patientProfileService.isProfileComplete(fromPhone)) {
-            sendRegistrationPortalLink(fromPhone);
-            return;
-        }
-
         double lat = ((Number) location.get("latitude")).doubleValue();
         double lon = ((Number) location.get("longitude")).doubleValue();
 
@@ -335,22 +330,83 @@ public class WhatsAppWebhookController {
 
         saveUserSession(fromPhone, lat, lon, preferredDept);
 
-        String prompt = "🏥 *Hospital Discovery & Care Options*\n\n"
-                + "📍 GPS location received near your area.\n"
-                + "🎯 *Specialist Needed:* *" + preferredDept + "*\n\n"
-                + "Please select how you would like to explore hospitals:\n"
-                + "• *⚡ Instant Booking:* Registered partner clinics with live OPD queue tokens on WhatsApp\n"
-                + "• *🗺️ Nearby Hospitals:* Nearest clinics & hospitals from Google Maps sorted by distance";
+        // Immediately show nearest partner hospitals sorted by distance
+        showNearestHospitalsForLocation(fromPhone, lat, lon, preferredDept);
+    }
 
-        whatsAppClient.sendInteractiveButtons(
+    private void showNearestHospitalsForLocation(String fromPhone, double lat, double lon, String preferredDept) {
+        List<LocationService.NearbyHospitalResult> nearby = locationService.findLocalHospitalsWithSmartFallback(lat, lon, preferredDept);
+
+        if (nearby.isEmpty()) {
+            whatsAppClient.sendTextMessage(fromPhone, "📍 GPS location received (" + String.format(java.util.Locale.US, "%.4f, %.4f", lat, lon) + ").\n\n⚠️ No partner hospitals currently configured. Please contact the clinical help desk.");
+            return;
+        }
+
+        // Cache hospital IDs for direct number reply (1, 2, 3...)
+        List<Long> hospIds = nearby.stream().map(r -> r.hospital().getId()).toList();
+        userRecentHospitals.put(fromPhone, hospIds);
+
+        // Build clean formatted message
+        StringBuilder sb = new StringBuilder();
+        sb.append("🏥 *Nearest Partner Hospitals*\n");
+        sb.append("📍 _Showing closest medical centers to your GPS location_\n");
+        if (preferredDept != null && !preferredDept.isBlank() && !preferredDept.equalsIgnoreCase("General Medicine")) {
+            sb.append("🩺 *Specialist Needed:* *").append(preferredDept).append("*\n");
+        }
+        sb.append("\n");
+
+        List<Map<String, String>> rows = new ArrayList<>();
+
+        for (int i = 0; i < nearby.size(); i++) {
+            LocationService.NearbyHospitalResult res = nearby.get(i);
+            Hospital h = res.hospital();
+            String name = h.getName() != null ? h.getName().trim() : "Hospital";
+            String distStr = res.distanceKm() < 1.0 
+                    ? String.format(java.util.Locale.US, "%.0f m away", res.distanceKm() * 1000)
+                    : String.format(java.util.Locale.US, "%.1f km away", res.distanceKm());
+            
+            sb.append((i + 1)).append("️⃣ *").append(name).append("*\n");
+            sb.append("   📏 *Distance:* ").append(distStr).append("\n");
+            if (h.getAddress() != null && !h.getAddress().isBlank()) {
+                sb.append("   📍 ").append(h.getAddress().trim()).append("\n");
+            } else if (h.getCity() != null) {
+                sb.append("   📍 ").append(h.getCity().trim()).append("\n");
+            }
+            int docCount = doctorRepository.findByHospitalId(h.getId()).size();
+            sb.append("   👨‍⚕️ *Doctors Available:* ").append(docCount).append("\n");
+            if (res.googleMapsDirectionsUrl() != null && !res.googleMapsDirectionsUrl().isBlank()) {
+                sb.append("   🧭 *Directions:* ").append(res.googleMapsDirectionsUrl()).append("\n");
+            }
+            sb.append("\n");
+
+            // Build interactive list row
+            String rowTitle = (i + 1) + ". " + name;
+            if (rowTitle.length() > 24) rowTitle = rowTitle.substring(0, 24);
+            String rowDesc = distStr + " • " + docCount + " doctor(s)";
+            if (rowDesc.length() > 72) rowDesc = rowDesc.substring(0, 72);
+            rows.add(Map.of(
+                    "id", "HOSP_" + h.getId(),
+                    "title", rowTitle,
+                    "description", rowDesc
+            ));
+        }
+
+        sb.append("👉 *To book an OPD queue token:*\n");
+        sb.append("• Reply with the hospital number (*1*, *2*, etc.)\n");
+        sb.append("• Or select a hospital from the list below:");
+
+        // Send interactive list or fallback to text if Meta interactive list call fails
+        boolean sent = whatsAppClient.sendInteractiveList(
                 fromPhone,
-                prompt,
-                List.of(
-                        new WhatsAppClientService.ButtonOption("EXPRESS_BOOK", "⚡ Express OPD Token"),
-                        new WhatsAppClientService.ButtonOption("DISCOVER_INSTANT", "🏥 Choose Clinic"),
-                        new WhatsAppClientService.ButtonOption("DISCOVER_MAPS", "🗺️ View on Maps")
-                )
+                "Partner Hospitals",
+                sb.toString(),
+                "Select Hospital",
+                rows
         );
+
+        if (!sent) {
+            whatsAppClient.sendTextMessage(fromPhone, sb.toString());
+        }
     }
 
     private void handleTextMessage(String fromPhone, Map<String, Object> textObj) {
@@ -358,27 +414,22 @@ public class WhatsAppWebhookController {
         if (body == null) return;
 
         // Pre-0. Patient Profile Onboarding flow (step-by-step conversation)
+        // If user sends a command like "cancel", "hi", "book", "express", or is selecting a number, break out of onboarding!
         if (patientProfileService.isOnboardingInProgress(fromPhone)) {
-            String nextQuestion = patientProfileService.processOnboardingInput(fromPhone, body);
-            if (nextQuestion != null) {
-                whatsAppClient.sendTextMessage(fromPhone, nextQuestion);
+            String lowerInput = body.toLowerCase().trim();
+            if (lowerInput.matches("^(hi|hey|hello|cancel|stop|book|express|opd|menu|start|1|2|3|4|5).*") || lowerInput.contains("express") || lowerInput.contains("opd")) {
+                patientProfileService.cancelOnboarding(fromPhone);
             } else {
-                // Onboarding complete!
-                var profile = patientProfileService.getProfile(fromPhone);
-                String summary = profile.map(p -> p.getProfileSummary()).orElse("");
-                whatsAppClient.sendTextMessage(fromPhone, "✅ *Health Profile Saved!*\n\n" + (summary.isBlank() ? "" : "📋 *Your Profile:* " + summary + "\n\n") + "Your medical details are now stored securely. All your appointment slips will include your profile info for the doctor.\n\nShare your location or type *'book opd'* to book an appointment!");
-            }
-            return;
-        }
-
-        // Enforce mandatory demographic registration via dedicated web registration portal
-        if (!patientProfileService.isProfileComplete(fromPhone)) {
-            if (geminiAiService.isEmergency(body)) {
-                whatsAppClient.sendTextMessage(fromPhone, geminiAiService.getEmergencyResponse());
+                String nextQuestion = patientProfileService.processOnboardingInput(fromPhone, body);
+                if (nextQuestion != null) {
+                    whatsAppClient.sendTextMessage(fromPhone, nextQuestion);
+                } else {
+                    var profile = patientProfileService.getProfile(fromPhone);
+                    String summary = profile.map(p -> p.getProfileSummary()).orElse("");
+                    whatsAppClient.sendTextMessage(fromPhone, "✅ *Health Profile Saved!*\n\n" + (summary.isBlank() ? "" : "📋 *Your Profile:* " + summary + "\n\n") + "Your medical details are now stored securely. All your appointment slips will include your profile info for the doctor.\n\nShare your location or type *'book opd'* to book an appointment!");
+                }
                 return;
             }
-            sendRegistrationPortalLink(fromPhone);
-            return;
         }
 
         String lower = body.toLowerCase().trim();
@@ -501,6 +552,17 @@ public class WhatsAppWebhookController {
             List<Long> recentHospIds = userRecentHospitals.get(fromPhone);
             if (recentHospIds != null && selIdx >= 0 && selIdx < recentHospIds.size()) {
                 handleHospitalSelection(fromPhone, recentHospIds.get(selIdx));
+                return;
+            }
+        }
+
+        // 2a-1b. Direct number selection for recently shown doctors (e.g. "1", "2", "3")
+        if (cleaned.matches("^[1-9]$") && userRecentDoctors.containsKey(fromPhone)) {
+            int selIdx = Integer.parseInt(cleaned) - 1;
+            List<Long> recentDocIds = userRecentDoctors.get(fromPhone);
+            if (recentDocIds != null && selIdx >= 0 && selIdx < recentDocIds.size()) {
+                userRecentDoctors.remove(fromPhone);
+                promptAppointmentDateSelection(fromPhone, recentDocIds.get(selIdx));
                 return;
             }
         }
@@ -1047,10 +1109,14 @@ public class WhatsAppWebhookController {
             }
         }
 
+        // Cache recent doctors for direct number selection (1, 2, 3)
+        userRecentHospitals.remove(fromPhone);
+        userRecentDoctors.put(fromPhone, deptDocs.stream().map(Doctor::getId).toList());
+
         // Build doctor schedule message
         StringBuilder docText = new StringBuilder();
         String deptHeader = (preferredDept != null && !preferredDept.isBlank()) ? preferredDept + " " : "";
-        docText.append("👨‍⚕️ *").append(deptHeader).append("Specialists Available Today at ")
+        docText.append("👨‍⚕️ *").append(deptHeader).append("Specialists Available at ")
                .append(hospital != null ? hospital.getName() : "Hospital")
                .append(":*\n");
         if (hospital != null) {
@@ -1070,7 +1136,7 @@ public class WhatsAppWebhookController {
             docText.append(idx++).append(". *").append(doc.getName()).append("*\n")
                    .append("   • Department: *").append(doc.getDepartment()).append("*\n")
                    .append("   • Rating: ⭐ ").append(String.format(java.util.Locale.US, "%.1f", doc.getRating()))
-                   .append("/5.0 (").append(doc.getTotalReviews()).append(" patient reviews)\n")
+                   .append("/5.0 (").append(doc.getTotalReviews()).append(" reviews)\n")
                    .append("   • Room: ").append(doc.getRoomNumber() != null ? doc.getRoomNumber() : "-")
                    .append(" | Fee: ₹").append((int) doc.getConsultationFee()).append("\n");
             if (doc.getAvailableTime() != null && !doc.getAvailableTime().isBlank()) {
@@ -1078,15 +1144,16 @@ public class WhatsAppWebhookController {
             }
             docText.append("\n");
         }
-        docText.append("👉 Tap a doctor below to book your OPD queue token:");
+        docText.append("👉 Reply with doctor number (*1*, *2*, etc.) or tap below to select:");
 
         // Interactive Buttons (up to 3 doctors)
+        boolean sent;
         if (deptDocs.size() <= 3) {
             List<WhatsAppClientService.ButtonOption> buttons = new ArrayList<>();
             for (Doctor doc : deptDocs) {
                 buttons.add(new WhatsAppClientService.ButtonOption("DOC_" + doc.getId(), formatDoctorButtonTitle(doc)));
             }
-            whatsAppClient.sendInteractiveButtons(
+            sent = whatsAppClient.sendInteractiveButtons(
                     fromPhone,
                     docText.toString(),
                     buttons
@@ -1105,13 +1172,17 @@ public class WhatsAppWebhookController {
                         "description", desc
                 ));
             }
-            whatsAppClient.sendInteractiveList(
+            sent = whatsAppClient.sendInteractiveList(
                     fromPhone,
                     "Available Doctors",
                     docText.toString(),
                     "Select Doctor",
                     docRows
             );
+        }
+
+        if (!sent) {
+            whatsAppClient.sendTextMessage(fromPhone, docText.toString());
         }
     }
 
@@ -1171,6 +1242,7 @@ public class WhatsAppWebhookController {
             return;
         }
 
+        userRecentDoctors.remove(fromPhone);
         userPendingDoctorBooking.put(fromPhone, doctorId);
 
         List<Map<String, String>> dateRows = new ArrayList<>();
@@ -1589,6 +1661,11 @@ public class WhatsAppWebhookController {
                 pdfUrl,
                 lockerUrl
         );
+
+        if (!patientProfileService.isProfileComplete(fromPhone)) {
+            String regUrl = "https://mediassist-1hdl.onrender.com/register.html?phone=" + safePhoneEncoded;
+            confirmation += "\n\n💡 *One-Time Profile Registration:*\nTo get your official MRN, age, and blood group printed on your case sheet, tap here to complete your 1-minute profile:\n👉 " + regUrl;
+        }
 
         whatsAppClient.sendTextMessage(fromPhone, confirmation);
 
@@ -2012,25 +2089,18 @@ public class WhatsAppWebhookController {
     }
 
     private void sendCustomWelcomeMessage(String fromPhone) {
-        // Enforce mandatory demographic registration: new patients must register first
-        if (!patientProfileService.isProfileComplete(fromPhone)) {
-            String firstQuestion = patientProfileService.startOnboarding(fromPhone);
-            whatsAppClient.sendTextMessage(fromPhone, firstQuestion);
-            return;
-        }
-
         String welcome = """
             👋 *Welcome to MediAssist!* 🩺
             _Your 24/7 Smart Healthcare & OPD Assistant_
 
             I am here to assist you with fast healthcare services:
             • 🩺 *Clinical Guidance:* Type your symptoms anytime.
-            • 🏥 *Nearby Hospitals:* Tap below or send your location.
+            • 🏥 *Nearby Hospitals:* Share your location pin to see nearest hospitals.
             • 🎫 *Instant OPD Token:* Book queue appointments with QR slips.
             • 💊 *Medication Alarms:* Send prescription photos or set reminders.
             • 📁 *Report Wardrobe:* Send lab reports/PDFs for automated summaries.
 
-            👉 *Tap a quick option below, share your location, or type how you are feeling:*
+            👉 *Tap a quick option below, share your location pin 📍, or type how you are feeling:*
             """;
 
         List<WhatsAppClientService.ButtonOption> buttons = List.of(
@@ -2039,7 +2109,10 @@ public class WhatsAppWebhookController {
                 new WhatsAppClientService.ButtonOption("MY_ALARMS", "💊 My Alarms")
         );
 
-        whatsAppClient.sendInteractiveButtons(fromPhone, welcome, buttons);
+        boolean sent = whatsAppClient.sendInteractiveButtons(fromPhone, welcome, buttons);
+        if (!sent) {
+            whatsAppClient.sendTextMessage(fromPhone, welcome + "\n\nReply:\n• *1* or *Hospitals* — Nearby Hospitals\n• *2* or *Book* — Instant OPD Token\n• *3* or *Alarms* — My Alarms");
+        }
     }
 
     private void showMyAlarms(String fromPhone) {

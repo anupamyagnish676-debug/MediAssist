@@ -1,6 +1,8 @@
 package com.med.assistant.service;
 
+import com.med.assistant.model.Doctor;
 import com.med.assistant.model.Hospital;
+import com.med.assistant.repository.DoctorRepository;
 import com.med.assistant.repository.HospitalRepository;
 import org.springframework.stereotype.Service;
 
@@ -12,9 +14,11 @@ import java.util.stream.Collectors;
 public class LocationService {
 
     private final HospitalRepository hospitalRepository;
+    private final DoctorRepository doctorRepository;
 
-    public LocationService(HospitalRepository hospitalRepository) {
+    public LocationService(HospitalRepository hospitalRepository, DoctorRepository doctorRepository) {
         this.hospitalRepository = hospitalRepository;
+        this.doctorRepository = doctorRepository;
     }
 
     public record NearbyHospitalResult(
@@ -47,8 +51,8 @@ public class LocationService {
         List<NearbyHospitalResult> allWithDist = allHospitals.stream()
                 .map(h -> {
                     double dist = calculateDistanceKm(userLat, userLon, h.getLatitude(), h.getLongitude());
-                    int availableDocs = (int) h.getDoctors().stream()
-                            .filter(d -> d.isAvailableToday())
+                    int availableDocs = (int) doctorRepository.findByHospitalId(h.getId()).stream()
+                            .filter(Doctor::isAvailableToday)
                             .count();
                     return new NearbyHospitalResult(h, dist, availableDocs);
                 })
@@ -65,7 +69,6 @@ public class LocationService {
                 .limit(5)
                 .collect(Collectors.toList());
 
-        // If no regional hospitals exist > 25km, but more local exist, or vice versa, return what exists
         return new HospitalDiscoveryResult(local, regional);
     }
 
@@ -78,19 +81,23 @@ public class LocationService {
         return allHospitals.stream()
                 .map(h -> {
                     double dist = calculateDistanceKm(userLat, userLon, h.getLatitude(), h.getLongitude());
-                    int availableDocs = (int) h.getDoctors().stream()
-                            .filter(com.med.assistant.model.Doctor::isAvailableToday)
+                    List<Doctor> docs = doctorRepository.findByHospitalId(h.getId());
+                    int availableDocs = (int) docs.stream()
+                            .filter(Doctor::isAvailableToday)
                             .count();
-                    return new NearbyHospitalResult(h, dist, availableDocs);
+                    return new Object() {
+                        final NearbyHospitalResult res = new NearbyHospitalResult(h, dist, availableDocs);
+                        final List<Doctor> doctors = docs;
+                    };
                 })
-                .filter(res -> res.distanceKm() <= maxRadiusKm)
-                .filter(res -> {
+                .filter(pair -> pair.res.distanceKm() <= maxRadiusKm)
+                .filter(pair -> {
                     if (department == null || department.isBlank()) {
                         return true;
                     }
-                    Hospital h = res.hospital();
+                    Hospital h = pair.res.hospital();
                     String dept = department.toLowerCase().trim();
-                    boolean docMatch = h.getDoctors().stream().anyMatch(d -> {
+                    boolean docMatch = pair.doctors.stream().anyMatch(d -> {
                         if (d.getDepartment() == null) return false;
                         String dDept = d.getDepartment().toLowerCase();
                         if (dept.contains("medicine") || dept.equals("general medicine")) {
@@ -104,6 +111,7 @@ public class LocationService {
                     );
                     return docMatch || specMatch;
                 })
+                .map(pair -> pair.res)
                 .sorted(Comparator.comparingDouble(NearbyHospitalResult::distanceKm))
                 .limit(5)
                 .collect(Collectors.toList());
@@ -111,9 +119,9 @@ public class LocationService {
 
     /**
      * Finds partner hospitals with a resilient multi-tier fallback:
-     * Tier 1: Matching department within 25 km
-     * Tier 2: Matching department within 100 km
-     * Tier 3: Any department within 100 km
+     * Tier 1: Matching department within 35 km
+     * Tier 2: Any partner hospital within 35 km
+     * Tier 3: Regional partner hospital within 80 km
      * Tier 4: All active partner hospitals nationwide sorted by distance
      * Guarantees the patient is never presented with an empty or broken list.
      */
@@ -130,7 +138,22 @@ public class LocationService {
         res = findNearbyHospitals(userLat, userLon, 80.0);
         if (!res.isEmpty()) return res;
 
-        return List.of();
+        // Tier 4: Nationwide fallback - all active partner hospitals sorted by distance from user
+        List<Hospital> all = hospitalRepository.findByActiveTrue();
+        if (all.isEmpty()) {
+            all = hospitalRepository.findAll();
+        }
+        return all.stream()
+                .map(h -> {
+                    double dist = calculateDistanceKm(userLat, userLon, h.getLatitude(), h.getLongitude());
+                    int availableDocs = (int) doctorRepository.findByHospitalId(h.getId()).stream()
+                            .filter(Doctor::isAvailableToday)
+                            .count();
+                    return new NearbyHospitalResult(h, dist, availableDocs);
+                })
+                .sorted(Comparator.comparingDouble(NearbyHospitalResult::distanceKm))
+                .limit(5)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -143,8 +166,8 @@ public class LocationService {
         return allHospitals.stream()
                 .map(h -> {
                     double dist = calculateDistanceKm(userLat, userLon, h.getLatitude(), h.getLongitude());
-                    int availableDocs = (int) h.getDoctors().stream()
-                            .filter(d -> d.isAvailableToday())
+                    int availableDocs = (int) doctorRepository.findByHospitalId(h.getId()).stream()
+                            .filter(Doctor::isAvailableToday)
                             .count();
                     return new NearbyHospitalResult(h, dist, availableDocs);
                 })
