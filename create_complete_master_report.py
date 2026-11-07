@@ -46,6 +46,14 @@ def build_master_document():
         section.bottom_margin = Inches(0.8)
         section.left_margin = Inches(0.8)
         section.right_margin = Inches(0.8)
+        # Footer
+        footer = section.footer
+        f_p = footer.paragraphs[0]
+        f_p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        f_run = f_p.add_run("© 2026 MediAssist Digital Health. All rights reserved. | Confidential")
+        f_run.font.name = "Arial"
+        f_run.font.size = Pt(8.5)
+        f_run.font.color.rgb = RGBColor(100, 116, 139)
 
     PRIMARY = RGBColor(0, 102, 255)      # Medical Tech Blue
     NAVY = RGBColor(15, 23, 42)          # Slate Dark Navy
@@ -92,7 +100,9 @@ def build_master_document():
     mp.add_run("• QA Team Size: ").bold = True
     mp.add_run("2 Members (Tester 1: Hospital Admin / Manager Lead; Tester 2: Patient / WhatsApp Lead)\n")
     mp.add_run("• Date & Version: ").bold = True
-    mp.add_run("November 2026 | Release Candidate v1.0.0 (Production Verified)")
+    mp.add_run("November 2026 | Release Candidate v1.0.0 (Production Verified)\n")
+    mp.add_run("• Copyright: ").bold = True
+    mp.add_run("© 2026 MediAssist Digital Healthcare Platform. All rights reserved.")
     doc.add_paragraph()
 
     # =========================================================================
@@ -729,7 +739,8 @@ def build_master_document():
 
     # Save to file
     out_files = [
-        "MediAssist_Master_System_Architecture_and_QA_Testing_Plan.docx"
+        "MediAssist_Master_System_Architecture_and_QA_Testing_Plan.docx",
+        "MediAssist_Master_System_Architecture_and_QA_Testing_Plan_2026.docx"
     ]
     saved_paths = []
     for fn in out_files:
