@@ -467,11 +467,14 @@ public class WhatsAppWebhookController {
             return;
         }
 
-        // Profile management command
-        if (lower.equals("my profile") || lower.equals("profile") || lower.equals("update profile") || lower.equals("health profile")) {
+        // Profile management and registration command
+        if (lower.equals("my profile") || lower.equals("profile") || lower.equals("update profile") || lower.equals("health profile")
+                || lower.contains("register") || lower.contains("registration") || lower.contains("signup") || lower.contains("sign up") || lower.contains("form")) {
             var profile = patientProfileService.getProfile(fromPhone);
             if (profile.isPresent() && profile.get().isProfileComplete()) {
                 PatientProfile p = profile.get();
+                String safePhoneEncoded = java.net.URLEncoder.encode(fromPhone, java.nio.charset.StandardCharsets.UTF_8);
+                String regUrl = "https://mediassist-1hdl.onrender.com/register.html?phone=" + safePhoneEncoded;
                 String summary = String.format("""
                     👤 *Your Health Profile*
 
@@ -481,13 +484,15 @@ public class WhatsAppWebhookController {
                     🩸 Blood Group: %s
                     ⚕️ Known Allergies: %s
 
-                    To update your profile, type *'update profile'* again.
+                    To view or update your profile on the registration portal, tap:
+                    👉 %s
                     """,
                     orDefault(p.getFullName(), "Not set"),
                     (p.getAge() != null ? p.getAge() + " years" : "Not set"),
                     orDefault(p.getGender(), "Not set"),
                     orDefault(p.getBloodGroup(), "Not set"),
-                    orDefault(p.getKnownAllergies(), "None")
+                    orDefault(p.getKnownAllergies(), "None"),
+                    regUrl
                 );
                 whatsAppClient.sendTextMessage(fromPhone, summary);
             } else {
@@ -866,6 +871,9 @@ public class WhatsAppWebhookController {
             • Accurate Age, Gender & Allergy badges on your printed OPD slips 🎫
 
             Tap the link above to complete registration in 1 minute!
+
+            _Need an instant doctor consultation right away?_
+            👉 Reply *'book'* or share your *location pin 📍* to view nearest hospitals and book immediately!
             """, regUrl);
         whatsAppClient.sendTextMessage(fromPhone, msg);
     }
@@ -2125,6 +2133,12 @@ public class WhatsAppWebhookController {
     }
 
     private void sendCustomWelcomeMessage(String fromPhone) {
+        // For new patients who haven't registered, present the registration portal link first
+        if (!patientProfileService.isProfileComplete(fromPhone)) {
+            sendRegistrationPortalLink(fromPhone);
+            return;
+        }
+
         String welcome = """
             👋 *Welcome to MediAssist!* 🩺
             _Your 24/7 Smart Healthcare & OPD Assistant_
