@@ -69,6 +69,37 @@ public class DataInitializer {
                     jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS consultation_end_time TIMESTAMP");
                     jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS rating INTEGER");
                     jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS feedback_text TEXT");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded24h BOOLEAN DEFAULT FALSE");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded2h BOOLEAN DEFAULT FALSE");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded1h BOOLEAN DEFAULT FALSE");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded30m BOOLEAN DEFAULT FALSE");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS missed_reschedule_sent BOOLEAN DEFAULT FALSE");
+                    jdbcTemplate.execute("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminded_followup BOOLEAN DEFAULT FALSE");
+                    try {
+                        jdbcTemplate.execute("ALTER TABLE appointments ALTER COLUMN time_slot TYPE VARCHAR(255)");
+                    } catch (Exception ignored) {}
+
+                    // patient_profiles self-healing
+                    try {
+                        jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS patient_profiles (" +
+                                "phone_number VARCHAR(50) PRIMARY KEY, " +
+                                "full_name VARCHAR(255), " +
+                                "date_of_birth DATE, " +
+                                "gender VARCHAR(50), " +
+                                "blood_group VARCHAR(50), " +
+                                "city VARCHAR(255), " +
+                                "email VARCHAR(255), " +
+                                "known_allergies VARCHAR(512), " +
+                                "chronic_conditions VARCHAR(512), " +
+                                "emergency_contact_name VARCHAR(255), " +
+                                "emergency_contact_phone VARCHAR(50), " +
+                                "profile_complete BOOLEAN DEFAULT FALSE, " +
+                                "onboarding_step INTEGER DEFAULT 0, " +
+                                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                                "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+                    } catch (Exception pe) {
+                        logger.warn("patient_profiles table creation notice: {}", pe.getMessage());
+                    }
 
                     // hospitals
                     jdbcTemplate.execute("ALTER TABLE hospitals ADD COLUMN IF NOT EXISTS logo_url TEXT");

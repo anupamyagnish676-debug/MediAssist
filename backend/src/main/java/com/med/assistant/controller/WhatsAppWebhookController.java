@@ -756,6 +756,13 @@ public class WhatsAppWebhookController {
             } else if ("REAL_ALARM_SYNC".equals(buttonId)) {
                 sendRealAlarmInstructions(fromPhone);
                 return;
+            } else if (buttonId.startsWith("SHIFT_")) {
+                handleShiftSelection(fromPhone, buttonId);
+                return;
+            } else if (buttonId.startsWith("DOC_")) {
+                Long doctorId = Long.parseLong(buttonId.replace("DOC_", ""));
+                promptAppointmentDateSelection(fromPhone, doctorId);
+                return;
             } else if ("CANCEL_ALARMS".equals(buttonId)) {
                 int cancelled = reminderService.cancelAllReminders(fromPhone);
                 if (cancelled > 0) {
@@ -1401,7 +1408,7 @@ public class WhatsAppWebhookController {
         String idPrefixM = "SHIFT_M_" + doc.getId() + "_" + chosenDate;
         String idPrefixE = "SHIFT_E_" + doc.getId() + "_" + chosenDate;
 
-        whatsAppClient.sendInteractiveButtons(
+        boolean sent = whatsAppClient.sendInteractiveButtons(
                 fromPhone,
                 msg,
                 List.of(
@@ -1409,6 +1416,11 @@ public class WhatsAppWebhookController {
                         new WhatsAppClientService.ButtonOption(idPrefixE, "🌆 Evening Shift")
                 )
         );
+
+        if (!sent) {
+            // Text fallback: patient can reply with "morning", "evening", or a specific time
+            whatsAppClient.sendTextMessage(fromPhone, msg + "\n\n👉 Reply *morning* or *evening* to select your shift, or type a specific time like *10:30 AM*.");
+        }
     }
 
     private void handleShiftSelection(String fromPhone, String payload) {
@@ -1424,8 +1436,8 @@ public class WhatsAppWebhookController {
 
             bookAppointmentWithPreferredTime(fromPhone, doctorId, chosenDate, isMorning ? "MORNING" : "EVENING");
         } catch (Exception e) {
-            logger.error("Error in handleShiftSelection: {}", e.getMessage(), e);
-            whatsAppClient.sendTextMessage(fromPhone, "Sorry, there was an issue selecting your shift. Please try again.");
+            logger.error("Error in handleShiftSelection for payload '{}': {}", payload, e.getMessage(), e);
+            whatsAppClient.sendTextMessage(fromPhone, "⚠️ Sorry, there was an issue finalizing your shift selection (" + (e.getMessage() != null ? e.getMessage() : "temporary server issue") + ").\n\n👉 Please reply directly with your preferred consultation time (e.g. *10:00 AM* or *6:00 PM*) or type *'book opd'* to restart.");
         }
     }
 
@@ -1526,6 +1538,9 @@ public class WhatsAppWebhookController {
 
         Doctor doctor = doctorRepository.findById(doctorId).orElseThrow();
         Hospital hospital = doctor.getHospital();
+        if (hospital != null && hospital.getId() != null) {
+            hospital = hospitalRepository.findById(hospital.getId()).orElse(hospital);
+        }
 
         String lockKey = doctorId + "_" + appointmentDate;
         ReentrantLock lock = DOCTOR_DATE_LOCKS.computeIfAbsent(lockKey, k -> new ReentrantLock());
@@ -1552,6 +1567,9 @@ public class WhatsAppWebhookController {
                 slot = match.slot();
                 tokenNumber = slot.slotNumber();
                 String timeSlotDescription = slot.timeWindow() + " (" + slot.shiftName() + ")";
+                if (timeSlotDescription.length() > 200) {
+                    timeSlotDescription = timeSlotDescription.substring(0, 200);
+                }
 
                 // Generate clean random 6-digit PIN (e.g. 849201)
                 do {
@@ -1560,10 +1578,15 @@ public class WhatsAppWebhookController {
 
                 String rawPatientName = userPatientNames.get(fromPhone);
                 if (rawPatientName == null || rawPatientName.isBlank()) {
-                    rawPatientName = patientProfileService.getProfile(fromPhone)
-                            .map(PatientProfile::getFullName)
-                            .filter(n -> n != null && !n.isBlank())
-                            .orElse("Patient");
+                    try {
+                        rawPatientName = patientProfileService.getProfile(fromPhone)
+                                .map(PatientProfile::getFullName)
+                                .filter(n -> n != null && !n.isBlank())
+                                .orElse("Patient");
+                    } catch (Exception pe) {
+                        logger.warn("Could not load patient profile for phone {}: {}", fromPhone, pe.getMessage());
+                        rawPatientName = "Patient";
+                    }
                 }
                 // Input sanitization: Strip HTML and dangerous characters to protect PDFBox and web views
                 patientName = rawPatientName.replaceAll("[<>{}\"']", "").trim();
@@ -1581,6 +1604,12 @@ public class WhatsAppWebhookController {
                     if (attempt == maxAttempts) {
                         promptSlotsFullAndShowAlternatives(fromPhone, doctor, appointmentDate);
                         return;
+                    }
+                } catch (Exception se) {
+                    logger.error("Error persisting appointment on attempt {}/{} for doctor {} on {}: {}",
+                            attempt, maxAttempts, doctorId, appointmentDate, se.getMessage(), se);
+                    if (attempt == maxAttempts) {
+                        throw se;
                     }
                 }
             }
@@ -1662,7 +1691,14 @@ public class WhatsAppWebhookController {
                 lockerUrl
         );
 
-        if (!patientProfileService.isProfileComplete(fromPhone)) {
+        boolean isProfileComplete = false;
+        try {
+            isProfileComplete = patientProfileService.isProfileComplete(fromPhone);
+        } catch (Exception pe) {
+            logger.warn("Could not check isProfileComplete for phone {}: {}", fromPhone, pe.getMessage());
+        }
+
+        if (!isProfileComplete) {
             String regUrl = "https://mediassist-1hdl.onrender.com/register.html?phone=" + safePhoneEncoded;
             confirmation += "\n\n💡 *One-Time Profile Registration:*\nTo get your official MRN, age, and blood group printed on your case sheet, tap here to complete your 1-minute profile:\n👉 " + regUrl;
         }
