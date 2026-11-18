@@ -69,6 +69,7 @@ public class WhatsAppWebhookController {
     private final OpdScheduleService opdScheduleService;
     private final RateLimitService rateLimitService;
     private final PatientProfileService patientProfileService;
+    private final AuditLogService auditLogService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // Fine-grained concurrency lock per doctor & date to eliminate double-booking race conditions
@@ -99,7 +100,8 @@ public class WhatsAppWebhookController {
                                      PatientSessionRepository patientSessionRepository,
                                      OpdScheduleService opdScheduleService,
                                      RateLimitService rateLimitService,
-                                     PatientProfileService patientProfileService) {
+                                     PatientProfileService patientProfileService,
+                                     AuditLogService auditLogService) {
         this.whatsAppClient = whatsAppClient;
         this.locationService = locationService;
         this.geminiAiService = geminiAiService;
@@ -114,6 +116,7 @@ public class WhatsAppWebhookController {
         this.opdScheduleService = opdScheduleService;
         this.rateLimitService = rateLimitService;
         this.patientProfileService = patientProfileService;
+        this.auditLogService = auditLogService;
     }
 
     /**
@@ -330,6 +333,9 @@ public class WhatsAppWebhookController {
 
         saveUserSession(fromPhone, lat, lon, preferredDept);
 
+        auditLogService.log(AuditLogService.AuditEvent.LOCATION_SHARED, fromPhone,
+                String.format(java.util.Locale.US, "GPS coordinates shared: lat=%.6f, lon=%.6f | Department: %s", lat, lon, preferredDept));
+
         // Immediately show nearest partner hospitals sorted by distance
         showNearestHospitalsForLocation(fromPhone, lat, lon, preferredDept);
     }
@@ -412,6 +418,9 @@ public class WhatsAppWebhookController {
     private void handleTextMessage(String fromPhone, Map<String, Object> textObj) {
         String body = (String) textObj.get("body");
         if (body == null) return;
+
+        auditLogService.log(AuditLogService.AuditEvent.MESSAGE_RECEIVED, fromPhone,
+                "Text message: \"" + body.trim() + "\"");
 
         // Pre-0. Patient Profile Onboarding flow (step-by-step conversation)
         // If user sends a command like "cancel", "hi", "book", "express", or is selecting a number, break out of onboarding!
@@ -519,6 +528,8 @@ public class WhatsAppWebhookController {
 
         // 1. Emergency red-flag check
         if (geminiAiService.isEmergency(body)) {
+            auditLogService.log(AuditLogService.AuditEvent.EMERGENCY_TRIGGERED, fromPhone,
+                    "Emergency red-flag symptom detected: '" + body.trim() + "'");
             whatsAppClient.sendTextMessage(fromPhone, geminiAiService.getEmergencyResponse());
             return;
         }
@@ -690,6 +701,10 @@ public class WhatsAppWebhookController {
         if ("list_reply".equals(type)) {
             Map<String, Object> reply = (Map<String, Object>) interactive.get("list_reply");
             String selectedId = (String) reply.get("id");
+            String title = (String) reply.get("title");
+
+            auditLogService.log(AuditLogService.AuditEvent.LIST_OPTION_SELECTED, fromPhone,
+                    "List option selected: ID=" + selectedId + (title != null ? " (" + title + ")" : ""));
 
             if ("DISCOVER_INSTANT".equals(selectedId)) {
                 handleDiscoverInstantBooking(fromPhone);
@@ -717,6 +732,10 @@ public class WhatsAppWebhookController {
         } else if ("button_reply".equals(type)) {
             Map<String, Object> reply = (Map<String, Object>) interactive.get("button_reply");
             String buttonId = (String) reply.get("id");
+            String title = (String) reply.get("title");
+
+            auditLogService.log(AuditLogService.AuditEvent.BUTTON_CLICKED, fromPhone,
+                    "Button clicked: ID=" + buttonId + (title != null ? " (" + title + ")" : ""));
 
             if ("EXPRESS_BOOK".equals(buttonId)) {
                 handleExpressBooking(fromPhone);
@@ -975,6 +994,8 @@ public class WhatsAppWebhookController {
     }
 
     private void sendMedicalLockerLink(String fromPhone) {
+        auditLogService.log(AuditLogService.AuditEvent.MEDICAL_LOCKER_VIEWED, fromPhone,
+                "Requested patient medical locker link");
         String safePhoneEncoded = java.net.URLEncoder.encode(fromPhone, java.nio.charset.StandardCharsets.UTF_8);
         String recordsUrl = "https://mediassist-1hdl.onrender.com/my-records.html?phone=" + safePhoneEncoded;
         String msg = String.format("""
@@ -1096,6 +1117,8 @@ public class WhatsAppWebhookController {
 
     private void handleHospitalSelection(String fromPhone, Long hospitalId) {
         Hospital hospital = hospitalRepository.findById(hospitalId).orElse(null);
+        auditLogService.log(AuditLogService.AuditEvent.HOSPITAL_SELECTED, fromPhone,
+                "Hospital chosen: ID=" + hospitalId + " (" + (hospital != null ? hospital.getName() : "Unknown") + ")");
         List<Doctor> allDoctors = doctorRepository.findByHospitalId(hospitalId);
 
         if (allDoctors.isEmpty()) {
@@ -1257,6 +1280,9 @@ public class WhatsAppWebhookController {
             return;
         }
 
+        auditLogService.log(AuditLogService.AuditEvent.DOCTOR_SELECTED, fromPhone,
+                "Doctor chosen: ID=" + doctorId + " (" + doc.getName() + " - " + doc.getDepartment() + ")");
+
         userRecentDoctors.remove(fromPhone);
         userPendingDoctorBooking.put(fromPhone, doctorId);
 
@@ -1356,6 +1382,9 @@ public class WhatsAppWebhookController {
             String dateStr = data.substring(splitIdx + 1);
             LocalDate chosenDate = LocalDate.parse(dateStr);
 
+            auditLogService.log(AuditLogService.AuditEvent.DATE_SELECTED, fromPhone,
+                    "Date chosen: " + chosenDate + " for doctor ID=" + doctorId);
+
             Doctor doctor = doctorRepository.findById(doctorId).orElse(null);
             if (doctor == null) {
                 whatsAppClient.sendTextMessage(fromPhone, "Doctor record not found. Please try booking again.");
@@ -1441,6 +1470,9 @@ public class WhatsAppWebhookController {
             Long doctorId = Long.parseLong(data.substring(0, splitIdx));
             String dateStr = data.substring(splitIdx + 1);
             LocalDate chosenDate = LocalDate.parse(dateStr);
+
+            auditLogService.log(AuditLogService.AuditEvent.SHIFT_SELECTED, fromPhone,
+                    (isMorning ? "Morning Shift" : "Evening Shift") + " chosen for doctor ID=" + doctorId + " on " + chosenDate);
 
             bookAppointmentWithPreferredTime(fromPhone, doctorId, chosenDate, isMorning ? "MORNING" : "EVENING");
         } catch (Exception e) {
@@ -1559,6 +1591,7 @@ public class WhatsAppWebhookController {
         int tokenNumber = 0;
         String patientName = "Patient";
         String qrToken = "";
+        String timeSlotDescription = "";
 
         lock.lock();
         try {
@@ -1574,7 +1607,7 @@ public class WhatsAppWebhookController {
 
                 slot = match.slot();
                 tokenNumber = slot.slotNumber();
-                String timeSlotDescription = slot.timeWindow() + " (" + slot.shiftName() + ")";
+                timeSlotDescription = slot.timeWindow() + " (" + slot.shiftName() + ")";
                 if (timeSlotDescription.length() > 200) {
                     timeSlotDescription = timeSlotDescription.substring(0, 200);
                 }
@@ -1633,6 +1666,10 @@ public class WhatsAppWebhookController {
         // Clear any pending date/time booking states
         userPendingDoctorBooking.remove(fromPhone);
         userPendingTimeBooking.remove(fromPhone);
+
+        auditLogService.log(AuditLogService.AuditEvent.APPOINTMENT_BOOKED, fromPhone,
+                String.format("Confirmed Token #%02d | Doctor: %s (%s) | Hospital: %s | Date: %s | Slot: %s | Check-in PIN: %s | Fee: ₹%d",
+                        tokenNumber, doctor.getName(), doctor.getDepartment(), hospital.getName(), appointmentDate, timeSlotDescription, qrToken, (int) doctor.getConsultationFee()));
 
         // Generate Branded PDF Slip with Dual QR Codes (in-memory)
         try {
@@ -1814,6 +1851,9 @@ public class WhatsAppWebhookController {
                     originalName = "Prescription_Doc_" + System.currentTimeMillis() + ".pdf";
                 }
             }
+
+            auditLogService.log(AuditLogService.AuditEvent.REPORT_UPLOADED, fromPhone,
+                    "Uploaded " + type + " (" + originalName + ", mime=" + mimeType + ", mediaId=" + mediaId + ")");
 
             // Send immediate acknowledgement on WhatsApp
             whatsAppClient.sendTextMessage(fromPhone, "🔍 *Prescription received!* Reviewing your prescribed medications and scheduling your daily reminder alarms... ⏳");
@@ -2212,6 +2252,8 @@ public class WhatsAppWebhookController {
     }
 
     private void handleQueueStatusCheck(String fromPhone) {
+        auditLogService.log(AuditLogService.AuditEvent.LIVE_QUEUE_CHECKED, fromPhone,
+                "Checked live queue status for today");
         List<Appointment> userAppts = appointmentRepository.findByPatientPhoneOrderByAppointmentDateDesc(fromPhone);
         List<Appointment> todayActive = userAppts.stream()
                 .filter(a -> a.getAppointmentDate().equals(LocalDate.now()) && a.getStatus() != Appointment.Status.CANCELLED)
@@ -2318,6 +2360,9 @@ public class WhatsAppWebhookController {
 
             appointmentRepository.delete(appt);
 
+            auditLogService.log(AuditLogService.AuditEvent.APPOINTMENT_CANCELLED, fromPhone,
+                    "Cancelled appointment #" + appt.getId() + " (Token #" + appt.getSerialNumber() + ") with Dr. " + docName + " at " + hospital);
+
             whatsAppClient.sendTextMessage(fromPhone, String.format("""
                     🗑️ *Appointment Cancelled Successfully*
 
@@ -2363,6 +2408,9 @@ public class WhatsAppWebhookController {
             // Mark old appointment as cancelled so its slot is immediately freed
             appt.setStatus(Appointment.Status.CANCELLED);
             appointmentRepository.save(appt);
+
+            auditLogService.log(AuditLogService.AuditEvent.APPOINTMENT_RESCHEDULED, fromPhone,
+                    "Rescheduled appointment #" + appt.getId() + " with Dr. " + docName + "; slot released back to quota");
 
             if (doctorId != null) {
                 userPendingDoctorBooking.put(fromPhone, doctorId);

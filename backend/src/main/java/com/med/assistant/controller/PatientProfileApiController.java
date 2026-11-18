@@ -1,6 +1,7 @@
 package com.med.assistant.controller;
 
 import com.med.assistant.model.PatientProfile;
+import com.med.assistant.service.AuditLogService;
 import com.med.assistant.service.PatientProfileService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -18,9 +19,11 @@ import java.util.Optional;
 public class PatientProfileApiController {
 
     private final PatientProfileService profileService;
+    private final AuditLogService auditLogService;
 
-    public PatientProfileApiController(PatientProfileService profileService) {
+    public PatientProfileApiController(PatientProfileService profileService, AuditLogService auditLogService) {
         this.profileService = profileService;
+        this.auditLogService = auditLogService;
     }
 
     @GetMapping("/{phone}")
@@ -60,6 +63,13 @@ public class PatientProfileApiController {
         }
 
         profileService.save(profile);
+        auditLogService.logAction(
+                AuditLogService.AuditEvent.PROFILE_REGISTERED,
+                phone,
+                "Name: " + (profile.getFullName() != null ? profile.getFullName() : "N/A") +
+                ", Gender: " + (profile.getGender() != null ? profile.getGender() : "N/A") +
+                ", BloodGroup: " + (profile.getBloodGroup() != null ? profile.getBloodGroup() : "N/A")
+        );
         return ResponseEntity.ok(Map.of("success", true, "message", "Profile updated successfully"));
     }
 }

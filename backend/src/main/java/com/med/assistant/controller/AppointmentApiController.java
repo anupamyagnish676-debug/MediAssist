@@ -5,6 +5,7 @@ import com.med.assistant.model.Doctor;
 import com.med.assistant.model.Hospital;
 import com.med.assistant.model.User;
 import com.med.assistant.repository.AppointmentRepository;
+import com.med.assistant.service.AuditLogService;
 import com.med.assistant.service.PatientAuthService;
 import com.med.assistant.service.RateLimitService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -32,6 +33,7 @@ public class AppointmentApiController {
     private final com.med.assistant.repository.HospitalRepository hospitalRepository;
     private final PatientAuthService patientAuthService;
     private final RateLimitService rateLimitService;
+    private final AuditLogService auditLogService;
 
     // Concurrency lock per doctor & date to prevent walk-in double-token issuance
     private static final Map<String, ReentrantLock> DOCTOR_DATE_LOCKS = new ConcurrentHashMap<>();
@@ -45,7 +47,8 @@ public class AppointmentApiController {
                                     com.med.assistant.repository.DoctorRepository doctorRepository,
                                     com.med.assistant.repository.HospitalRepository hospitalRepository,
                                     PatientAuthService patientAuthService,
-                                    RateLimitService rateLimitService) {
+                                    RateLimitService rateLimitService,
+                                    AuditLogService auditLogService) {
         this.appointmentRepository = appointmentRepository;
         this.pdfService = pdfService;
         this.whatsAppClient = whatsAppClient;
@@ -56,6 +59,7 @@ public class AppointmentApiController {
         this.hospitalRepository = hospitalRepository;
         this.patientAuthService = patientAuthService;
         this.rateLimitService = rateLimitService;
+        this.auditLogService = auditLogService;
     }
 
     private String cleanToken(String rawToken) {
@@ -402,6 +406,11 @@ public class AppointmentApiController {
             if (pdfBytes == null || pdfBytes.length == 0) {
                 return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
             }
+            auditLogService.logAction(
+                    AuditLogService.AuditEvent.CASE_SHEET_DOWNLOADED,
+                    appt.getPatientPhone() != null ? appt.getPatientPhone() : "Appt#" + appt.getId(),
+                    "Token #" + appt.getSerialNumber() + ", Patient: " + appt.getPatientName() + ", Doctor: " + (appt.getDoctor() != null ? appt.getDoctor().getName() : "N/A")
+            );
             return ResponseEntity.ok()
                     .header(org.springframework.http.HttpHeaders.CONTENT_TYPE, "application/pdf")
                     .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"Appointment_Token_" + appt.getSerialNumber() + ".pdf\"")
@@ -594,6 +603,12 @@ public class AppointmentApiController {
         } catch (Exception we) {
             // non-blocking
         }
+
+        auditLogService.logAction(
+                AuditLogService.AuditEvent.WALK_IN_TOKEN_ISSUED,
+                safePhone,
+                "Token #" + nextSerial + ", Doctor: " + doctor.getName() + " (" + doctor.getDepartment() + "), Room: " + doctor.getRoomNumber()
+        );
 
         return ResponseEntity.ok(Map.of(
                 "success", true,
