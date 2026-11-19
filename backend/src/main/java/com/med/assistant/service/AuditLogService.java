@@ -39,10 +39,44 @@ public class AuditLogService {
 
     private static final Logger auditLogger = LoggerFactory.getLogger("AUDIT");
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
-
-    private static final Path LOG_DIR = Paths.get("logs");
-    private static final Path LOG_FILE = LOG_DIR.resolve("user_actions.log");
     private static final long MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB rollover
+
+    private final Path logDir;
+    private final Path logFile;
+
+    public AuditLogService() {
+        Path resolvedDir = Paths.get("logs");
+        try {
+            if (!Files.exists(resolvedDir)) {
+                Files.createDirectories(resolvedDir);
+            }
+            Path testPath = resolvedDir.resolve(".write_test");
+            Files.writeString(testPath, "ok", StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            Files.deleteIfExists(testPath);
+        } catch (Exception e) {
+            // Container fallback if current working dir is read-only for unprivileged user
+            resolvedDir = Paths.get(System.getProperty("java.io.tmpdir", "/tmp"), "med-logs");
+            try {
+                if (!Files.exists(resolvedDir)) {
+                    Files.createDirectories(resolvedDir);
+                }
+            } catch (Exception ignored) {}
+        }
+
+        this.logDir = resolvedDir;
+        this.logFile = resolvedDir.resolve("user_actions.log");
+
+        try {
+            if (!Files.exists(this.logFile)) {
+                Files.writeString(this.logFile,
+                        "# MediAssist User Action Log File (File-Based Storage, Non-Database)\n" +
+                        "# Session Started: " + LocalDateTime.now() + "\n\n",
+                        StandardCharsets.UTF_8, StandardOpenOption.CREATE);
+            }
+        } catch (Exception ignored) {}
+
+        auditLogger.info("AuditLogService active. User actions log path: {}", this.logFile.toAbsolutePath());
+    }
 
     public enum AuditEvent {
         // WhatsApp User Actions
@@ -130,17 +164,17 @@ public class AuditLogService {
 
         // 2. Write directly to disk file ./logs/user_actions.log
         try {
-            if (!Files.exists(LOG_DIR)) {
-                Files.createDirectories(LOG_DIR);
+            if (!Files.exists(logDir)) {
+                Files.createDirectories(logDir);
             }
 
             // Simple size-based rotation if log exceeds 20MB
-            if (Files.exists(LOG_FILE) && Files.size(LOG_FILE) > MAX_FILE_SIZE_BYTES) {
-                Path backup = LOG_DIR.resolve("user_actions_" + System.currentTimeMillis() + ".log");
-                Files.move(LOG_FILE, backup);
+            if (Files.exists(logFile) && Files.size(logFile) > MAX_FILE_SIZE_BYTES) {
+                Path backup = logDir.resolve("user_actions_" + System.currentTimeMillis() + ".log");
+                Files.move(logFile, backup);
             }
 
-            Files.writeString(LOG_FILE, logEntry, StandardCharsets.UTF_8,
+            Files.writeString(logFile, logEntry, StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             auditLogger.error("Failed to write user action to log file: {}", e.getMessage());
@@ -152,15 +186,15 @@ public class AuditLogService {
      */
     public File getLogFile() {
         try {
-            if (!Files.exists(LOG_DIR)) {
-                Files.createDirectories(LOG_DIR);
+            if (!Files.exists(logDir)) {
+                Files.createDirectories(logDir);
             }
-            if (!Files.exists(LOG_FILE)) {
-                Files.writeString(LOG_FILE, "# MediAssist User Action Log File\n# Started: " + LocalDateTime.now() + "\n",
+            if (!Files.exists(logFile)) {
+                Files.writeString(logFile, "# MediAssist User Action Log File\n# Started: " + LocalDateTime.now() + "\n\n",
                         StandardCharsets.UTF_8, StandardOpenOption.CREATE);
             }
         } catch (IOException ignored) {}
-        return LOG_FILE.toFile();
+        return logFile.toFile();
     }
 
     /**
@@ -170,10 +204,10 @@ public class AuditLogService {
      */
     public List<String> getRecentLogs(int maxLines) {
         try {
-            if (!Files.exists(LOG_FILE)) {
+            if (!Files.exists(logFile)) {
                 return Collections.emptyList();
             }
-            List<String> allLines = Files.readAllLines(LOG_FILE, StandardCharsets.UTF_8);
+            List<String> allLines = Files.readAllLines(logFile, StandardCharsets.UTF_8);
             if (allLines.size() <= maxLines) {
                 return allLines;
             }
@@ -188,7 +222,7 @@ public class AuditLogService {
      */
     public long getLogFileSize() {
         try {
-            return Files.exists(LOG_FILE) ? Files.size(LOG_FILE) : 0L;
+            return Files.exists(logFile) ? Files.size(logFile) : 0L;
         } catch (Exception e) {
             return 0L;
         }
@@ -199,8 +233,8 @@ public class AuditLogService {
      */
     public synchronized boolean clearLogs() {
         try {
-            if (Files.exists(LOG_FILE)) {
-                Files.writeString(LOG_FILE, "# MediAssist User Action Log File (Cleared at " + LocalDateTime.now() + ")\n",
+            if (Files.exists(logFile)) {
+                Files.writeString(logFile, "# MediAssist User Action Log File (Cleared at " + LocalDateTime.now() + ")\n\n",
                         StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
             }
             return true;

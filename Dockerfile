@@ -20,9 +20,10 @@ WORKDIR /app
 
 RUN apk add --no-cache fontconfig ttf-dejavu
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
+RUN mkdir -p /app/logs /app/uploads && chown -R appuser:appgroup /app
 
-COPY --from=build /app/backend/target/*.jar app.jar
+COPY --from=build --chown=appuser:appgroup /app/backend/target/*.jar app.jar
+USER appuser
 
 EXPOSE 8080
 ENTRYPOINT ["java", "-Djava.awt.headless=true", "-XX:+UseZGC", "-jar", "app.jar"]

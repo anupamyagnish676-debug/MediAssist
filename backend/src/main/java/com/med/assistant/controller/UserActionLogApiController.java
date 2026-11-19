@@ -50,8 +50,11 @@ public class UserActionLogApiController {
      * Download the physical user_actions.log file directly.
      */
     @GetMapping(value = "/user-actions/download", produces = MediaType.TEXT_PLAIN_VALUE)
-    public ResponseEntity<Resource> downloadLogFile() throws IOException {
+    public ResponseEntity<Resource> downloadLogFile() {
         File file = auditLogService.getLogFile();
+        if (!file.exists()) {
+            auditLogService.log(AuditLogService.AuditEvent.ADMIN_ACTION, "SYSTEM", "Log file initialized for download");
+        }
         Resource resource = new FileSystemResource(file);
 
         return ResponseEntity.ok()
